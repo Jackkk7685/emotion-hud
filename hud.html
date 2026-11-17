@@ -12,10 +12,16 @@
     -webkit-font-smoothing: antialiased; }
   #stage { position: fixed; inset: 0; }
   #cv { width: 100%; height: 100%; object-fit: cover; display: block; }
-  #stage.stereo .hud, #stage.stereo .panel, #stage.stereo #train, #stage.stereo #geo { display: none !important; }
+  #stage.stereo .hud, #stage.stereo .panel, #stage.stereo #train, #stage.stereo #geo, #stage.stereo #more { display: none !important; }
+  /* 默认只留最少的东西；状态栏、趋势条这些放进「详细信息」里 */
+  #stage:not(.detail) .hud.top, #stage:not(.detail) .trend { display: none; }
+  #stage:not(.detail) .panel, #stage:not(.detail) #geo { top: calc(env(safe-area-inset-top, 0px) + 14px); }
+  #more { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 70px); transform: translateX(-50%);
+    display: none; grid-template-columns: 1fr 1fr; gap: 2px; padding: 6px; border-radius: 24px; width: min(320px, 92vw); z-index: 4; }
+  #more button { text-align: left; border-radius: 16px; padding: 11px 14px; }
 
   /* 磨砂玻璃材质：半透明 + 背景模糊 + 细亮边 */
-  .tag, .panel, .ctrl, #train, .card, #geo {
+  .tag, .panel, .ctrl, #train, .card, #geo, #more {
     background: var(--glass); border: 1px solid var(--line);
     -webkit-backdrop-filter: blur(28px) saturate(1.7); backdrop-filter: blur(28px) saturate(1.7);
     box-shadow: 0 10px 36px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.18); }
@@ -53,7 +59,7 @@
 
   #geo { position: absolute; left: 16px; top: calc(env(safe-area-inset-top, 0px) + 58px); width: min(250px, 64vw); display: none;
     border-radius: 26px; padding: 10px; }
-  #map { height: 150px; border-radius: 18px; overflow: hidden; background: rgba(255,255,255,.08); }
+  #map { height: 124px; border-radius: 18px; overflow: hidden; background: rgba(255,255,255,.08); }
   #map .leaflet-control-attribution { font-size: 9px; background: rgba(255,255,255,.6); }
   .me { width: 16px; height: 16px; border-radius: 50%; background: #0a84ff; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(10,132,255,.35); position: relative; }
   .me::after { content: ""; position: absolute; left: 50%; bottom: 100%; margin-left: -6px; border: 6px solid transparent; border-bottom: 11px solid #0a84ff; }
@@ -107,15 +113,20 @@
   <div class="hud bottom">
     <div class="trend" id="trend"></div>
     <div class="ctrl">
-      <button id="trainBtn">教它认识我</button>
-      <button id="styleBtn">标记：气泡</button>
       <button id="objBtn">物体识别：开</button>
       <button id="geoBtn">地标地图：关</button>
-      <button id="stereoBtn">双眼模式</button>
-      <button id="modeBtn">镜片模式：关</button>
       <button id="flipBtn">翻转摄像头</button>
-      <button id="stopBtn">停止</button>
+      <button id="moreBtn">更多</button>
     </div>
+  </div>
+
+  <div id="more">
+    <button id="trainBtn">教它认识我</button>
+    <button id="styleBtn">标记：气泡</button>
+    <button id="stereoBtn">双眼模式</button>
+    <button id="modeBtn">镜片模式：关</button>
+    <button id="detailBtn">详细信息：关</button>
+    <button id="stopBtn">停止</button>
   </div>
 
   <div id="geo">
@@ -371,6 +382,7 @@ const OBJ_ZH = { bicycle: '自行车', car: '汽车', motorcycle: '摩托车', a
   pizza: '披萨', donut: '甜甜圈', cake: '蛋糕', chair: '椅子', couch: '沙发', 'potted plant': '盆栽', bed: '床', 'dining table': '餐桌', toilet: '马桶', tv: '电视',
   laptop: '笔记本电脑', mouse: '鼠标', remote: '遥控器', keyboard: '键盘', 'cell phone': '手机', microwave: '微波炉', oven: '烤箱', toaster: '烤面包机', sink: '水槽',
   refrigerator: '冰箱', book: '书', clock: '时钟', vase: '花瓶', scissors: '剪刀', 'teddy bear': '玩具熊', 'hair drier': '吹风机', toothbrush: '牙刷' };
+let detail = false;   // 「详细信息」开关：打开后显示百分比、距离、状态栏等
 let objDetector = null, objOn = true, objs = [], objHits = [], lastObjTs = 0, lastObjRun = 0;
 async function loadObjectDetector() {
   const mp = await import(`${MP_BASE}/vision_bundle.mjs`);
@@ -406,20 +418,22 @@ const objVisible = o => o.hits >= 2 && o.score >= OBJ_MIN;
 // 物体标记：四角细线 + 小号磨砂标签。点标签会打开网页搜索
 function drawObjects(W, H, u, map, hits) {
   const fs = Math.max(12, u * 1.35);
-  for (const o of objs) {
-    if (!objVisible(o)) continue;
+  const list = objs.filter(objVisible).sort((p, q) => q.score - p.score).slice(0, detail ? 8 : 3);
+  for (const o of list) {
     const b = map(o), zh = OBJ_ZH[o.name];
-    ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = Math.max(1.5, u * .14); ctx.lineCap = 'round';
-    const L = Math.min(b.width, b.height) * .16;
-    ctx.beginPath();
-    for (const [x, y, dx, dy] of [[b.x, b.y, 1, 1], [b.x + b.width, b.y, -1, 1], [b.x, b.y + b.height, 1, -1], [b.x + b.width, b.y + b.height, -1, -1]]) {
-      ctx.moveTo(x + dx * L, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * L);
+    if (detail) {
+      ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = Math.max(1.5, u * .14); ctx.lineCap = 'round';
+      const L = Math.min(b.width, b.height) * .16;
+      ctx.beginPath();
+      for (const [x, y, dx, dy] of [[b.x, b.y, 1, 1], [b.x + b.width, b.y, -1, 1], [b.x, b.y + b.height, 1, -1], [b.x + b.width, b.y + b.height, -1, -1]]) {
+        ctx.moveTo(x + dx * L, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * L);
+      }
+      ctx.stroke();
     }
-    ctx.stroke();
-    const text = `${zh} ${Math.round(o.score * 100)}% ⌕`;
+    const text = detail ? `${zh} ${Math.round(o.score * 100)}%` : zh;
     ctx.font = `500 ${fs}px -apple-system, "PingFang SC", sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     const pw = ctx.measureText(text).width + fs * 1.3, ph = fs * 1.9;
-    const px = Math.max(visX0 + 6, Math.min(b.x + b.width / 2 - pw / 2, visX1 - pw - 6)), py = Math.max(4, Math.min(b.y + fs * .5, H - ph - 4));
+    const px = Math.max(visX0 + 6, Math.min(b.x + b.width / 2 - pw / 2, visX1 - pw - 6)), py = Math.max(4, Math.min(b.y + b.height / 2 - ph / 2, H - ph - 4));
     ctx.save();
     ctx.beginPath(); ctx.roundRect(px, py, pw, ph, ph / 2); ctx.clip();
     if (bgDraw) { ctx.filter = 'blur(12px) saturate(1.6)'; bgDraw(); ctx.filter = 'none'; }
@@ -435,6 +449,39 @@ function drawObjects(W, H, u, map, hits) {
 // ---- 地标和地图：手机定位 + 指南针 + 维基百科/开放街道地图的公开数据 ----
 let geoOn = false, pos = null, heading = null, places = [], lmap = null, meMarker = null, placeLayer = null, lastQuery = null, geoWatch = null;
 const rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
+// 国内的地图底图用的是加了偏移的坐标(GCJ-02)，把定位得到的标准坐标换算过去，点位才不会偏几百米
+let useGcj = false, tileLayer = null, tileErrors = 0;
+const inChina = (lat, lon) => lon > 73.6 && lon < 135.1 && lat > 17.9 && lat < 53.6;
+function wgs2gcj(lat, lon) {
+  if (!inChina(lat, lon)) return [lat, lon];
+  const a = 6378245.0, ee = 0.00669342162296594323, x = lon - 105, y = lat - 35, PI = Math.PI;
+  let dLat = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  dLat += (20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2 / 3;
+  dLat += (20 * Math.sin(y * PI) + 40 * Math.sin(y / 3 * PI)) * 2 / 3;
+  dLat += (160 * Math.sin(y / 12 * PI) + 320 * Math.sin(y * PI / 30)) * 2 / 3;
+  let dLon = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  dLon += (20 * Math.sin(6 * x * PI) + 20 * Math.sin(2 * x * PI)) * 2 / 3;
+  dLon += (20 * Math.sin(x * PI) + 40 * Math.sin(x / 3 * PI)) * 2 / 3;
+  dLon += (150 * Math.sin(x / 12 * PI) + 300 * Math.sin(x / 30 * PI)) * 2 / 3;
+  const radLat = lat / 180 * PI, magic = 1 - ee * Math.sin(radLat) ** 2, sq = Math.sqrt(magic);
+  return [lat + dLat * 180 / ((a * (1 - ee)) / (magic * sq) * PI), lon + dLon * 180 / (a / sq * Math.cos(radLat) * PI)];
+}
+const toMap = (lat, lon) => useGcj ? wgs2gcj(lat, lon) : [lat, lon];
+function setTiles(gcj) {
+  if (!lmap || (tileLayer && useGcj === gcj)) return;
+  useGcj = gcj; tileErrors = 0;
+  if (tileLayer) lmap.removeLayer(tileLayer);
+  tileLayer = gcj
+    ? L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', { subdomains: '1234', maxZoom: 18, attribution: '© 高德地图' })
+    : L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
+  // 国外底图连续加载失败（比如在国内）就自动换成国内底图
+  tileLayer.on('tileerror', () => { if (!useGcj && ++tileErrors >= 3) { setTiles(true); refreshMapPoints(); } });
+  tileLayer.addTo(lmap);
+}
+function refreshMapPoints() {
+  if (pos && meMarker) { meMarker.setLatLng(toMap(pos.lat, pos.lon)); lmap.setView(toMap(pos.lat, pos.lon), lmap.getZoom()); }
+  drawPlaceDots();
+}
 function distM(a, b) {      // 两点间距离（米）
   const dLat = rad(b.lat - a.lat), dLon = rad(b.lon - a.lon);
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
@@ -471,7 +518,7 @@ function onOrient(e) {
 async function fetchWiki(p) {
   const u = 'https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch&ggsradius=1500&ggslimit=30' +
     `&ggscoord=${p.lat}|${p.lon}&prop=coordinates|langlinks|description&lllang=zh&lllimit=50&colimit=50`;
-  const j = await (await fetch(u)).json();
+  const j = await (await fetchT(u)).json();
   return Object.values((j.query && j.query.pages) || {}).filter(x => x.coordinates).map(x => {
     const zh = x.langlinks && x.langlinks[0] && x.langlinks[0]['*'];
     return { name: zh || x.title, lat: x.coordinates[0].lat, lon: x.coordinates[0].lon, desc: x.description || '',
@@ -481,35 +528,38 @@ async function fetchWiki(p) {
 async function fetchOSM(p) {
   const q = `[out:json][timeout:12];(nwr(around:1200,${p.lat},${p.lon})[tourism~"attraction|museum|viewpoint|gallery|theme_park|zoo"][name];` +
     `nwr(around:1200,${p.lat},${p.lon})[historic][name];nwr(around:1200,${p.lat},${p.lon})[amenity~"place_of_worship|theatre|university|library"][name];);out center 40;`;
-  const j = await (await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q) })).json();
+  const j = await (await fetchT('https://overpass-api.de/api/interpreter', { method: 'POST', body: 'data=' + encodeURIComponent(q) })).json();
   return (j.elements || []).map(e => {
     const lat = e.lat ?? (e.center && e.center.lat), lon = e.lon ?? (e.center && e.center.lon), t = e.tags || {};
     const name = t['name:zh'] || t.name;
     return lat == null ? null : { name, lat, lon, desc: '', url: 'https://www.bing.com/search?q=' + encodeURIComponent(name) };
   }).filter(Boolean);
 }
+// 带超时的请求：数据源连不上时最多等 9 秒，不让界面一直卡在“正在查询”
+function fetchT(url, opts = {}, ms = 9000) {
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), ms);
+  return fetch(url, { ...opts, signal: ac.signal }).finally(() => clearTimeout(t));
+}
 async function fetchPlaces() {
   if (!pos) return;
   lastQuery = { ...pos };
   $('geoMsg').textContent = '正在查询附近地标…';
-  const results = await Promise.allSettled([fetchWiki(pos), fetchOSM(pos)]);
   const seen = new Set(), all = [];
-  for (const r of results) if (r.status === 'fulfilled') for (const x of r.value) {
-    const key = x.name.toLowerCase();
-    if (!seen.has(key)) { seen.add(key); all.push(x); }
-  }
-  places = all;
-  if (results.every(r => r.status === 'rejected')) $('geoMsg').textContent = '查不到地标：当前网络访问不了数据源';
-  else if (!all.length) $('geoMsg').textContent = '1.5 公里内没有查到地标';
-  else $('geoMsg').textContent = '';
-  drawPlaceDots(); renderPlaces();
+  let failed = 0;
+  const merge = list => {            // 哪个数据源先回来就先显示，不等另一个
+    for (const x of list) { const key = x.name.toLowerCase(); if (!seen.has(key)) { seen.add(key); all.push(x); } }
+    places = all.slice(); if (all.length) $('geoMsg').textContent = '';
+    drawPlaceDots(); renderPlaces();
+  };
+  await Promise.all([fetchWiki(pos), fetchOSM(pos)].map(pr => pr.then(merge).catch(() => { failed++; })));
+  if (!all.length) $('geoMsg').textContent = failed === 2 ? '查不到地标：当前网络访问不了数据源' : '1.5 公里内没有查到地标';
 }
 function ranked() {
   return places.map(x => ({ ...x, d: distM(pos, x), b: bearing(pos, x) })).sort((a, b) => a.d - b.d);
 }
 function renderPlaces() {
   if (!pos) return;
-  const list = ranked().slice(0, 6);
+  const list = ranked().slice(0, detail ? 6 : 4);
   // “正前方”：朝向左右 25° 以内最近的那个
   const ahead = heading == null ? null : list.find(x => Math.abs(relAngle(x.b, heading)) < 25);
   $('places').innerHTML = list.map(x => {
@@ -522,7 +572,7 @@ function renderPlaces() {
 function drawPlaceDots() {
   if (!lmap || !placeLayer) return;
   placeLayer.clearLayers();
-  for (const x of places) L.circleMarker([x.lat, x.lon], { radius: 4, color: '#fff', weight: 1.5, fillColor: '#ff9f0a', fillOpacity: 1 }).bindTooltip(x.name).addTo(placeLayer);
+  for (const x of places) L.circleMarker(toMap(x.lat, x.lon), { radius: 4, color: '#fff', weight: 1.5, fillColor: '#ff9f0a', fillOpacity: 1 }).bindTooltip(x.name).addTo(placeLayer);
 }
 function loadLeaflet() {
   return new Promise((res, rej) => {
@@ -534,16 +584,18 @@ function loadLeaflet() {
 function setPos(lat, lon) {
   pos = { lat, lon };
   if (lmap) {
+    setTiles(inChina(lat, lon));
     if (!meMarker) {
-      meMarker = L.marker([lat, lon], { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), interactive: false }).addTo(lmap);
-      lmap.setView([lat, lon], 16);
-    } else { meMarker.setLatLng([lat, lon]); lmap.panTo([lat, lon], { animate: true }); }
+      meMarker = L.marker(toMap(lat, lon), { icon: L.divIcon({ className: '', html: '<div class="me"></div>', iconSize: [16, 16], iconAnchor: [8, 8] }), interactive: false }).addTo(lmap);
+      lmap.setView(toMap(lat, lon), 16);
+    } else { meMarker.setLatLng(toMap(lat, lon)); lmap.panTo(toMap(lat, lon), { animate: true }); }
   }
   if (!lastQuery || distM(lastQuery, pos) > 150) fetchPlaces().catch(err => { $('geoMsg').textContent = '查询地标出错'; console.warn(err); });
   else renderPlaces();
 }
 async function enableGeo() {
-  geoOn = true; $('geoBtn').textContent = '地标地图：开'; $('geo').style.display = 'block';
+  geoOn = true; gotFix = false; $('geoBtn').textContent = '地标地图：开'; $('geo').style.display = 'block';
+  $('geoMsg').textContent = '正在获取位置…';
   // iPhone 上读取指南针需要单独点一次授权
   try { if (window.DeviceOrientationEvent && DeviceOrientationEvent.requestPermission) await DeviceOrientationEvent.requestPermission(); } catch (e) {}
   addEventListener('deviceorientationabsolute', onOrient, true);
@@ -552,15 +604,28 @@ async function enableGeo() {
     await loadLeaflet();
     if (!lmap) {
       lmap = L.map('map', { zoomControl: false, attributionControl: true, dragging: true }).setView([0, 0], 2);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(lmap);
+      setTiles(false);
       placeLayer = L.layerGroup().addTo(lmap);
     }
     setTimeout(() => lmap.invalidateSize(), 50);
   } catch (e) { $('map').style.display = 'none'; }
   if (!navigator.geolocation) { $('geoMsg').textContent = '这个浏览器不支持定位'; return; }
-  geoWatch = navigator.geolocation.watchPosition(p => setPos(p.coords.latitude, p.coords.longitude),
-    err => { $('geoMsg').textContent = err.code === 1 ? '没有定位权限，请在浏览器里允许定位' : '暂时获取不到位置'; },
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+  geoWatch = navigator.geolocation.watchPosition(p => { gotFix = true; setPos(p.coords.latitude, p.coords.longitude); },
+    err => {
+      if (err.code === 1) { $('geoMsg').textContent = '没有定位权限，请在浏览器里允许定位'; }
+      if (!gotFix) roughLocate(err.code === 1);
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 12000 });
+}
+let gotFix = false;
+// 精确定位拿不到时，用网络地址估一个城市级的大概位置，至少让地图先出来
+async function roughLocate(denied) {
+  try {
+    const j = await (await fetch('https://ipapi.co/json/')).json();
+    if (gotFix || j.latitude == null) return;
+    setPos(j.latitude, j.longitude);
+    $('geoMsg').textContent = (denied ? '没有定位权限，' : '精确定位暂时拿不到，') + '先按网络估算的大概位置显示（城市级，不准）';
+  } catch (e) { if (!denied) $('geoMsg').textContent = '暂时获取不到位置'; }
 }
 function disableGeo() {
   geoOn = false; $('geoBtn').textContent = '地标地图：关'; $('geo').style.display = 'none';
@@ -570,7 +635,7 @@ function disableGeo() {
 // 把朝向范围内的地标画成画面上方的悬浮标签（只在后置摄像头、且有指南针时）
 function drawGeoLabels(W, H, u) {
   if (!geoOn || !pos || heading == null || mirror || !places.length) return;
-  const HFOV = 65, fs = Math.max(12, u * 1.4), shown = ranked().filter(x => Math.abs(relAngle(x.b, heading)) < HFOV / 2).slice(0, 3);
+  const HFOV = 65, fs = Math.max(12, u * 1.4), shown = ranked().filter(x => Math.abs(relAngle(x.b, heading)) < HFOV / 2).slice(0, detail ? 3 : 1);
   shown.forEach((x, i) => {
     const text = `${x.name} · ${fmtDist(x.d)}`;
     ctx.font = `600 ${fs}px -apple-system, "PingFang SC", sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
@@ -667,8 +732,8 @@ function drawMarkers(W, H, u, map) {
   faces.forEach((f, i) => {
     const b = map(f), e = f.expr, top = f.top, unsure = e[top] < UNSURE, col = unsure ? '#aeaeb2' : EMO[top].color;
     const cx = b.x + b.width / 2, pct = f.shownPct, main = i === 0;
-    const far = f.dist && f.dist < 10 ? ` · ${f.dist.toFixed(1)}米` : '';
-    const label = (unsure ? '不确定' : `${EMO[top].zh} ${pct}%`) + far, emo = unsure ? '❔' : EMOJI[top];
+    const far = detail && f.dist && f.dist < 10 ? ` · ${f.dist.toFixed(1)}米` : '';
+    const label = (unsure ? '不确定' : EMO[top].zh + (detail ? ` ${pct}%` : '')) + far, emo = unsure ? '❔' : EMOJI[top];
     ctx.font = `600 ${fs}px -apple-system, "PingFang SC", sans-serif`;
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, u * (main ? .28 : .16));
@@ -812,6 +877,12 @@ cv.addEventListener('click', ev => {
   if (hit) window.open(hit.url || 'https://www.bing.com/search?q=' + encodeURIComponent(hit.q), '_blank', 'noopener');
 });
 $('geoBtn').onclick = () => geoOn ? disableGeo() : enableGeo();
+$('moreBtn').onclick = () => { $('more').style.display = $('more').style.display === 'grid' ? 'none' : 'grid'; };
+$('more').addEventListener('click', ev => { if (ev.target.id && ev.target.id !== 'styleBtn' && ev.target.id !== 'modeBtn' && ev.target.id !== 'detailBtn') $('more').style.display = 'none'; });
+cv.addEventListener('click', () => { $('more').style.display = 'none'; });
+const setDetail = on => { detail = on; $('stage').classList.toggle('detail', on); $('detailBtn').textContent = '详细信息：' + (on ? '开' : '关'); try { localStorage.setItem('hudDetail', on ? '1' : '0'); } catch (e) {} };
+$('detailBtn').onclick = () => setDetail(!detail);
+try { if (localStorage.getItem('hudDetail') === '1') setDetail(true); } catch (e) {}
 try { if (localStorage.getItem('hudPanel') === 'full') $('panel').classList.remove('mini'); } catch (e) {}
 $('panel').onclick = () => {
   const mini = $('panel').classList.toggle('mini');
