@@ -64,7 +64,16 @@ const fill = new THREE.DirectionalLight(0xffffff, 0.7); fill.position.set(200, 6
 // 模型坐标: X 佩戴者右侧, Y 上, Z 指向脑后。这里把 Z 取反让镜框正面朝向默认相机。
 const root = new THREE.Group(); scene.add(root);
 const STYLES = {
-  slim: { name: '椭圆细框', parts: [
+  smart: { name: '细前框 + 藏光机', parts: [
+    { f: 'smart_front.stl',        color: 0x2b2b2e, kind: 'print', explode: [0, 0, -26] },
+    { f: 'smart_temple_right.stl', color: 0x2b2b2e, kind: 'print', explode: [10, 0, 26] },
+    { f: 'smart_temple_left.stl',  color: 0x2b2b2e, kind: 'print', explode: [-10, 0, 26] },
+    { f: 'smart_ref_engine.stl',    color: 0x19a37c, kind: 'ref', explode: [-22, 0, -26] },
+    { f: 'smart_ref_battery.stl',   color: 0x7a6be0, kind: 'ref', explode: [22, 0, -26] },
+    { f: 'smart_ref_waveguide.stl', color: 0x7fd8c0, kind: 'ref', explode: [0, 0, -56], opacity: 0.34 },
+    { f: 'smart_ref_plano.stl',     color: 0xbfd3e0, kind: 'ref', explode: [0, 0, -56], opacity: 0.28 },
+  ] },
+  slim: { name: '椭圆细框（无光机）', parts: [
     { f: 'slim_front.stl',        color: 0x2b2b2e, kind: 'print', explode: [0, 0, -30] },
     { f: 'slim_temple_right.stl', color: 0x2b2b2e, kind: 'print', explode: [22, 0, 12] },
     { f: 'slim_temple_left.stl',  color: 0x2b2b2e, kind: 'print', explode: [-22, 0, 12] },
@@ -81,7 +90,7 @@ const STYLES = {
     { f: 'ref_rx.stl',        color: 0x9fb6c8, kind: 'ref', explode: [0, 0, 6], opacity: 0.45 },
   ] },
 };
-let styleKey = 'slim';
+let styleKey = 'smart';
 const loader = new STLLoader();
 let meshes = [];
 function loadStyle(key) {
@@ -104,7 +113,7 @@ function loadStyle(key) {
     }, undefined, () => { document.getElementById('msg').textContent = '有模型文件加载失败：' + p.f; });
   }
 }
-loadStyle('slim');
+loadStyle('smart');
 
 let showRefs = true, ghost = false, explode = 0, explodeTarget = 0;
 const view = (x, y, z) => { camera.position.set(x, y, z); controls.target.set(0, 0, 55); controls.update(); };
@@ -114,7 +123,8 @@ $('bRefs').onclick = e => { showRefs = !showRefs; e.target.classList.toggle('on'
 $('bGhost').onclick = e => { ghost = !ghost; e.target.classList.toggle('on', ghost); };
 $('bExplode').onclick = e => { explodeTarget = explodeTarget ? 0 : 1; e.target.classList.toggle('on', !!explodeTarget); };
 const COLORS = [['哑光黑', 0x232325, 1, 0.9, 0], ['亮黑', 0x1b1b1d, 1, 0.25, 1], ['琥珀', 0x9a5a22, 0.78, 0.25, 1], ['透明灰', 0x7d8790, 0.6, 0.25, 1], ['奶白', 0xe9e4d8, 1, 0.6, 0.3]];
-$('bStyle').onclick = () => loadStyle(styleKey === 'slim' ? 'bulky' : 'slim');
+const ORDER = ['smart', 'slim', 'bulky'];
+$('bStyle').onclick = () => loadStyle(ORDER[(ORDER.indexOf(styleKey) + 1) % ORDER.length]);
 let colorIdx = 0;
 $('bColor').onclick = e => { colorIdx = (colorIdx + 1) % COLORS.length; e.target.textContent = '配色：' + COLORS[colorIdx][0]; };
 $('bFront').onclick = () => view(0, 10, -330);
