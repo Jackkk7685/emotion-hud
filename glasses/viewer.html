@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HUD 眼镜 3D 预览</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #ecebe6; color: #22211e;
+    font: 14px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  .bar { position: fixed; left: 12px; top: 12px; right: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid #c9c6bd; background: #fff; cursor: pointer; }
+  button.on { background: #22211e; color: #fff; border-color: #22211e; }
+  .legend { position: fixed; left: 12px; bottom: 12px; background: rgba(255,255,255,.85); padding: 8px 12px; border-radius: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 10px; }
+  .legend i:first-child { margin-left: 0; }
+  #msg { margin-left: auto; color: #6b675e; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <button id="bRefs" class="on">显示内部零件</button>
+  <button id="bGhost">镜框半透明</button>
+  <button id="bExplode">拆开看</button>
+  <button id="bFront">正面</button>
+  <button id="bTop">俯视</button>
+  <button id="bSide">右侧</button>
+  <button id="bColor">配色：亮黑</button>
+  <span id="msg">拖动旋转，滚轮缩放</span>
+</div>
+<div class="legend">
+  <i style="background:#2b2b2e"></i>打印件
+  <i style="background:#19a37c"></i>光机和光波导片
+  <i style="background:#7a6be0"></i>电池
+  <i style="background:#9fb6c8"></i>平光片和近视内插片
+</div>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xecebe6);
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 1, 2000);
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 60);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8880, 1.1));
+const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(-120, 200, -260); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.7); fill.position.set(200, 60, 200); scene.add(fill);
+
+// 模型坐标: X 佩戴者右侧, Y 上, Z 指向脑后。这里把 Z 取反让镜框正面朝向默认相机。
+const root = new THREE.Group(); scene.add(root);
+const PARTS = [
+  { f: 'front.stl',        color: 0x2b2b2e, kind: 'print', explode: [0, 0, -30] },
+  { f: 'temple_right.stl', color: 0x2b2b2e, kind: 'print', explode: [28, 0, 10] },
+  { f: 'temple_left.stl',  color: 0x2b2b2e, kind: 'print', explode: [-28, 0, 10] },
+  { f: 'ref_engine.stl',    color: 0x19a37c, kind: 'ref', explode: [-14, 0, 10] },
+  { f: 'ref_waveguide.stl', color: 0x19a37c, kind: 'ref', explode: [0, 0, -62], opacity: 0.55 },
+  { f: 'ref_battery.stl',   color: 0x7a6be0, kind: 'ref', explode: [14, 0, 10] },
+  { f: 'ref_plano.stl',     color: 0x9fb6c8, kind: 'ref', explode: [0, 0, -62], opacity: 0.45 },
+  { f: 'ref_rx.stl',        color: 0x9fb6c8, kind: 'ref', explode: [0, 0, 6], opacity: 0.45 },
+];
+const loader = new STLLoader();
+const meshes = [];
+let loaded = 0;
+for (const p of PARTS) {
+  loader.load(p.f + '?v=' + Date.now(), geo => {
+    geo.computeVertexNormals();
+    const mat = p.kind === 'print'
+      ? new THREE.MeshPhysicalMaterial({ color: p.color, roughness: 0.25, clearcoat: 1, clearcoatRoughness: 0.12, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.3, metalness: 0.05,
+          transparent: p.opacity != null, opacity: p.opacity ?? 1, side: THREE.DoubleSide });
+    const m = new THREE.Mesh(geo, mat);
+    m.userData = p; root.add(m); meshes.push(m);
+    if (++loaded === PARTS.length) { window.__loaded = true; document.getElementById('msg').textContent = '拖动旋转，滚轮缩放'; }
+  }, undefined, () => { document.getElementById('msg').textContent = '有模型文件加载失败：' + p.f; });
+}
+
+let showRefs = true, ghost = false, explode = 0, explodeTarget = 0;
+const view = (x, y, z) => { camera.position.set(x, y, z); controls.target.set(0, 0, 55); controls.update(); };
+view(-190, 110, -230);
+const $ = id => document.getElementById(id);
+$('bRefs').onclick = e => { showRefs = !showRefs; e.target.classList.toggle('on', showRefs); };
+$('bGhost').onclick = e => { ghost = !ghost; e.target.classList.toggle('on', ghost); };
+$('bExplode').onclick = e => { explodeTarget = explodeTarget ? 0 : 1; e.target.classList.toggle('on', !!explodeTarget); };
+const COLORS = [['亮黑', 0x1b1b1d, 1], ['琥珀', 0x9a5a22, 0.78], ['透明灰', 0x7d8790, 0.6], ['奶白', 0xe9e4d8, 1]];
+let colorIdx = 0;
+$('bColor').onclick = e => { colorIdx = (colorIdx + 1) % COLORS.length; e.target.textContent = '配色：' + COLORS[colorIdx][0]; };
+$('bFront').onclick = () => view(0, 10, -330);
+$('bTop').onclick = () => view(0, 380, 54);
+$('bSide').onclick = () => view(380, 10, 60);
+Object.assign(window, { view, setColor: i => { colorIdx = i; }, setState: s => { if ('ghost' in s) ghost = s.ghost; if ('explode' in s) explodeTarget = explode = s.explode; if ('refs' in s) showRefs = s.refs; } });
+
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+(function tick() {
+  explode += (explodeTarget - explode) * 0.12;
+  for (const m of meshes) {
+    const p = m.userData;
+    m.position.set(p.explode[0] * explode, p.explode[1] * explode, p.explode[2] * explode);
+    if (p.kind === 'ref') m.visible = showRefs;
+    else {
+      const [, col, op] = COLORS[colorIdx], o = ghost ? 0.28 : op;
+      m.material.color.setHex(col); m.material.transparent = o < 1; m.material.opacity = o; m.material.depthWrite = o >= 1;
+    }
+  }
+  controls.update(); renderer.render(scene, camera); requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
