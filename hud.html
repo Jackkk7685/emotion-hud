@@ -91,6 +91,7 @@
     <div class="ctrl">
       <button id="trainBtn">教它认识我</button>
       <button id="styleBtn">标记：气泡</button>
+      <button id="objBtn">物体识别：开</button>
       <button id="stereoBtn">双眼模式</button>
       <button id="modeBtn">镜片模式：关</button>
       <button id="flipBtn">切换摄像头</button>
@@ -110,7 +111,7 @@
     <div class="card">
       <h1>情绪 HUD</h1>
       <p>智能眼镜情绪 HUD 的手机原型：把摄像头当作眼镜的摄像头，屏幕当作镜片显示。</p>
-      <p>所有识别都在本机完成，画面不会上传。请只对同意被识别的人使用。</p>
+      <p>所有识别都在本机完成，画面不会上传。点物体标签会打开网页搜索，只发送物体名称。请只对同意被识别的人使用。</p>
       <button id="startBtn" disabled>启动 HUD</button>
       <p id="status">正在加载模型…</p>
       <p><a href="index.html">← 返回普通版</a></p>
@@ -334,6 +335,70 @@ function onFaces(result, ts) {
   if (main && ts - lastHist > 1000) { pushTrend(main.top); lastHist = ts; }
 }
 
+// ---- 物体识别：Google MediaPipe 的 EfficientDet-Lite0 模型，可识别 80 类常见物体 ----
+const MP_VER = '0.10.14', MP_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MP_VER}`;
+const OBJ_ZH = { bicycle: '自行车', car: '汽车', motorcycle: '摩托车', airplane: '飞机', bus: '公交车', train: '火车', truck: '卡车', boat: '船',
+  'traffic light': '红绿灯', 'fire hydrant': '消防栓', 'stop sign': '停车标志', 'parking meter': '停车计时器', bench: '长椅', bird: '鸟', cat: '猫', dog: '狗',
+  horse: '马', sheep: '羊', cow: '牛', elephant: '大象', bear: '熊', zebra: '斑马', giraffe: '长颈鹿', backpack: '背包', umbrella: '雨伞', handbag: '手提包',
+  tie: '领带', suitcase: '行李箱', frisbee: '飞盘', skis: '滑雪板', snowboard: '单板滑雪板', 'sports ball': '球', kite: '风筝', 'baseball bat': '棒球棒',
+  'baseball glove': '棒球手套', skateboard: '滑板', surfboard: '冲浪板', 'tennis racket': '网球拍', bottle: '瓶子', 'wine glass': '酒杯', cup: '杯子', fork: '叉子',
+  knife: '刀', spoon: '勺子', bowl: '碗', banana: '香蕉', apple: '苹果', sandwich: '三明治', orange: '橙子', broccoli: '西兰花', carrot: '胡萝卜', 'hot dog': '热狗',
+  pizza: '披萨', donut: '甜甜圈', cake: '蛋糕', chair: '椅子', couch: '沙发', 'potted plant': '盆栽', bed: '床', 'dining table': '餐桌', toilet: '马桶', tv: '电视',
+  laptop: '笔记本电脑', mouse: '鼠标', remote: '遥控器', keyboard: '键盘', 'cell phone': '手机', microwave: '微波炉', oven: '烤箱', toaster: '烤面包机', sink: '水槽',
+  refrigerator: '冰箱', book: '书', clock: '时钟', vase: '花瓶', scissors: '剪刀', 'teddy bear': '玩具熊', 'hair drier': '吹风机', toothbrush: '牙刷' };
+let objDetector = null, objOn = true, objs = [], objHits = [], lastObjTs = 0, lastObjRun = 0;
+async function loadObjectDetector() {
+  const mp = await import(`${MP_BASE}/vision_bundle.mjs`);
+  const fileset = await mp.FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+  const make = delegate => mp.ObjectDetector.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: 'models/efficientdet_lite0.tflite', delegate }, runningMode: 'VIDEO', scoreThreshold: 0.4, maxResults: 8 });
+  try { objDetector = await make('GPU'); } catch (e) { objDetector = await make('CPU'); }
+}
+function detectObjects(src) {
+  if (!objDetector || !objOn) { objs = []; return; }
+  const ts = Math.max(lastObjTs + 1, Math.round(performance.now())); lastObjTs = ts;
+  const found = objDetector.detectForVideo(src, ts).detections
+    .map(d => ({ name: d.categories[0].categoryName, score: d.categories[0].score,
+                 box: { x: d.boundingBox.originX, y: d.boundingBox.originY, width: d.boundingBox.width, height: d.boundingBox.height } }))
+    .filter(d => d.name !== 'person' && OBJ_ZH[d.name]);        // 人交给人脸识别处理
+  const used = new Set();
+  for (const d of found) {                                       // 和上一次的结果对上号，位置才能平滑移动
+    const c = [d.box.x + d.box.width / 2, d.box.y + d.box.height / 2];
+    const o = objs.find(o => !used.has(o) && o.name === d.name &&
+      Math.hypot(c[0] - o.target.x - o.target.width / 2, c[1] - o.target.y - o.target.height / 2) < Math.max(o.target.width, d.box.width) * 0.6);
+    if (o) { used.add(o); o.target = d.box; o.score = o.score * 0.6 + d.score * 0.4; o.miss = 0; }
+    else { const n = { name: d.name, score: d.score, box: { ...d.box }, target: d.box, miss: 0 }; objs.push(n); used.add(n); }
+  }
+  objs = objs.filter(o => used.has(o) || ++o.miss <= 3);
+}
+// 物体标记：四角细线 + 小号磨砂标签。点标签会打开网页搜索
+function drawObjects(W, H, u, map, hits) {
+  const fs = Math.max(12, u * 1.35);
+  for (const o of objs) {
+    const b = map(o), zh = OBJ_ZH[o.name];
+    ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = Math.max(1.5, u * .14); ctx.lineCap = 'round';
+    const L = Math.min(b.width, b.height) * .16;
+    ctx.beginPath();
+    for (const [x, y, dx, dy] of [[b.x, b.y, 1, 1], [b.x + b.width, b.y, -1, 1], [b.x, b.y + b.height, 1, -1], [b.x + b.width, b.y + b.height, -1, -1]]) {
+      ctx.moveTo(x + dx * L, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * L);
+    }
+    ctx.stroke();
+    const text = `${zh} ⌕`;
+    ctx.font = `500 ${fs}px -apple-system, "PingFang SC", sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    const pw = ctx.measureText(text).width + fs * 1.3, ph = fs * 1.9;
+    const px = Math.max(visX0 + 6, Math.min(b.x + b.width / 2 - pw / 2, visX1 - pw - 6)), py = Math.max(4, Math.min(b.y + fs * .5, H - ph - 4));
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, ph / 2); ctx.clip();
+    if (bgDraw) { ctx.filter = 'blur(12px) saturate(1.6)'; bgDraw(); ctx.filter = 'none'; }
+    ctx.fillStyle = bgDraw ? 'rgba(118,118,128,.36)' : 'rgba(70,70,76,.92)'; ctx.fillRect(px, py, pw, ph);
+    ctx.restore();
+    ctx.lineWidth = Math.max(1, u * .08); ctx.strokeStyle = 'rgba(255,255,255,.3)';
+    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, ph / 2); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.fillText(text, px + fs * .65, py + ph / 2 + 1);
+    if (hits) hits.push({ x: px, y: py, w: pw, h: ph, q: zh });
+  }
+}
+
 let stereo = false, stereoSince = 0, srcW = 1280, bgDraw = null, visX0 = 0, visX1 = 1280;
 const FACE_W = 0.16, CAM_F = 0.785;   // 人脸平均宽度(米)；焦距与画面宽度之比(按约 65° 视野的摄像头估)
 
@@ -348,6 +413,8 @@ function render(src) {
     const d = FACE_W * CAM_F * srcW / Math.max(8, f.box.width);
     if (f.dist == null || Math.abs(d - f.dist) >= 0.2) f.dist = Math.round(d * 10) / 10;
   }
+  for (const o of objs) for (const k of ['x', 'y', 'width', 'height']) o.box[k] += (o.target[k] - o.box[k]) * 0.2;
+  objHits = [];
   const W = cv.width, H = cv.height;
   if (!stereo) {
     if (hudOnly || !src) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
@@ -356,6 +423,7 @@ function render(src) {
     // 画布按“铺满”方式显示，两侧可能被裁掉；算出实际可见的横向范围，标签不要跑到屏幕外
     const k = Math.max(cv.clientWidth / W, cv.clientHeight / H) || 1, vis = Math.min(W, cv.clientWidth / k || W);
     visX0 = (W - vis) / 2; visX1 = visX0 + vis;
+    drawObjects(W, H, Math.max(W, H) / 100, o => o.box, objHits);
     drawMarkers(W, H, Math.max(W, H) / 100, f => f.box);
     return;
   }
@@ -371,7 +439,9 @@ function render(src) {
     const pop = (eye === 0 ? 1 : -1) * w * 0.004, u = Math.max(w, H) / 100 * 1.25;
     bgDraw = hudOnly || !src ? null : () => ctx.drawImage(src, ox, oy, vw * sc, vh * sc);
     visX0 = 0; visX1 = w;
-    drawMarkers(w, H, u, f => ({ x: ox + f.box.x * sc + pop, y: oy + f.box.y * sc, width: f.box.width * sc, height: f.box.height * sc }));
+    const mapBox = f => ({ x: ox + f.box.x * sc + pop, y: oy + f.box.y * sc, width: f.box.width * sc, height: f.box.height * sc });
+    drawObjects(w, H, u, mapBox, null);
+    drawMarkers(w, H, u, mapBox);
     drawEyeInfo(w, H, u, pop * 2.5);
     ctx.restore();
   }
@@ -467,6 +537,7 @@ function loop(ts) {
       if (lastDet) fps = fps * 0.8 + (1000 / (now - lastDet)) * 0.2;
       lastDet = now; $('fps').textContent = fps.toFixed(1);
       onFaces(r, now);
+      if (now - lastObjRun > 300) { lastObjRun = now; try { detectObjects(video); } catch (e) { console.warn(e); } }
     }).catch(err => console.warn(err)).finally(() => busy = false);
   }
   requestAnimationFrame(loop);
@@ -526,7 +597,15 @@ $('styleBtn').onclick = () => {
   try { localStorage.setItem('hudStyle', STYLES[styleIdx][0]); } catch (e) {}
 };
 $('stereoBtn').onclick = () => setStereo(true);
-cv.addEventListener('click', () => { if (stereo) setStereo(false); });
+cv.addEventListener('click', ev => {
+  if (stereo) { setStereo(false); return; }
+  // 把点击位置换算到画布坐标（画布是按“铺满”方式显示的）
+  const r = cv.getBoundingClientRect(), k = Math.max(r.width / cv.width, r.height / cv.height);
+  const x = (ev.clientX - r.left - (r.width - cv.width * k) / 2) / k, y = (ev.clientY - r.top - (r.height - cv.height * k) / 2) / k;
+  const hit = objHits.find(h => x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h);
+  if (hit) window.open('https://www.bing.com/search?q=' + encodeURIComponent(hit.q), '_blank', 'noopener');
+});
+$('objBtn').onclick = () => { objOn = !objOn; if (!objOn) objs = []; $('objBtn').textContent = '物体识别：' + (objOn ? '开' : '关'); };
 $('modeBtn').onclick = () => { hudOnly = !hudOnly; $('modeBtn').textContent = '镜片模式：' + (hudOnly ? '开' : '关'); };
 $('flipBtn').onclick = async () => {
   facing = facing === 'environment' ? 'user' : 'environment';
@@ -558,6 +637,8 @@ setInterval(() => $('clock').textContent = new Date().toLocaleTimeString('zh-CN'
       await hsPredict(warm, { x: 0, y: 0, width: 160, height: 160 });
     } catch (err) { emoSession = null; note = '（增强模型加载失败，使用基础模型）'; console.warn(err); }
     window.__ready = true;
+    loadObjectDetector().then(() => { window.__objReady = true; })
+      .catch(err => { console.warn('object detector failed', err); $('objBtn').textContent = '物体识别：不可用'; objOn = false; });
     $('startBtn').disabled = false;
     $('status').textContent = '模型已就绪' + note;
   } catch (err) {
