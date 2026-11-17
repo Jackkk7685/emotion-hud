@@ -11,6 +11,7 @@
     font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, "PingFang SC", monospace; }
   #stage { position: fixed; inset: 0; }
   #cv { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #stage.stereo .hud, #stage.stereo .panel, #stage.stereo #train { display: none !important; }
   .hud { position: absolute; left: 0; right: 0; display: flex; justify-content: space-between; gap: 12px;
     padding: 12px 16px; letter-spacing: .06em; text-shadow: 0 0 6px rgba(61,255,176,.6); pointer-events: none; }
   .top { top: env(safe-area-inset-top, 0); }
@@ -77,6 +78,7 @@
     <div class="ctrl">
       <button id="trainBtn">教它认识我</button>
       <button id="styleBtn">标记：气泡</button>
+      <button id="stereoBtn">双眼模式</button>
       <button id="modeBtn">镜片模式：关</button>
       <button id="flipBtn">切换摄像头</button>
       <button id="stopBtn">停止</button>
@@ -319,20 +321,73 @@ function onFaces(result, ts) {
   if (main && ts - lastHist > 1000) { pushTrend(main.top); lastHist = ts; }
 }
 
+let stereo = false, stereoSince = 0, srcW = 1280;
+const FACE_W = 0.16, CAM_F = 0.785;   // 人脸平均宽度(米)；焦距与画面宽度之比(按约 65° 视野的摄像头估)
+
 function render(src) {
-  const W = cv.width, H = cv.height, u = Math.max(W, H) / 100;
-  if (hudOnly || !src) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
-  else ctx.drawImage(src, 0, 0, W, H);
+  if (src) srcW = src.videoWidth || src.width || srcW;
+  for (const f of faces) {
+    for (const k of ['x', 'y', 'width', 'height']) f.box[k] += (f.target[k] - f.box[k]) * 0.15;  // 每帧缓动到目标位置
+    // 百分比只在变化超过 4 个点时才刷新，数字不再狂跳
+    const rawPct = Math.round(f.expr[f.top] * 100);
+    if (f.shownPct == null || Math.abs(rawPct - f.shownPct) >= 4) f.shownPct = rawPct;
+    // 按人脸在画面里的大小估算距离，变化超过 0.2 米才刷新
+    const d = FACE_W * CAM_F * srcW / Math.max(8, f.box.width);
+    if (f.dist == null || Math.abs(d - f.dist) >= 0.2) f.dist = Math.round(d * 10) / 10;
+  }
+  const W = cv.width, H = cv.height;
+  if (!stereo) {
+    if (hudOnly || !src) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+    else ctx.drawImage(src, 0, 0, W, H);
+    drawMarkers(W, H, Math.max(W, H) / 100, f => f.box);
+    return;
+  }
+  // 双眼模式：左右各画一遍。标记在两眼里略微错开，看起来浮在画面前方
+  const w = W / 2, vw = src ? (src.videoWidth || src.width) : srcW, vh = src ? (src.videoHeight || src.height) : srcW * 9 / 16;
+  const sc = Math.max(w / vw, H / vh), ox = (w - vw * sc) / 2, oy = (H - vh * sc) / 2;
+  for (const eye of [0, 1]) {
+    ctx.save();
+    ctx.beginPath(); ctx.rect(eye * w, 0, w, H); ctx.clip();
+    ctx.translate(eye * w, 0);
+    if (hudOnly || !src) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, H); }
+    else ctx.drawImage(src, ox, oy, vw * sc, vh * sc);
+    const pop = (eye === 0 ? 1 : -1) * w * 0.004, u = Math.max(w, H) / 100 * 1.25;
+    drawMarkers(w, H, u, f => ({ x: ox + f.box.x * sc + pop, y: oy + f.box.y * sc, width: f.box.width * sc, height: f.box.height * sc }));
+    drawEyeInfo(w, H, u, pop * 2.5);
+    ctx.restore();
+  }
+  ctx.fillStyle = '#000'; ctx.fillRect(w - 1, 0, 2, H);
+}
+
+// 双眼模式下画在每只眼睛画面里的状态信息（放在中间区域，避开镜片边缘）
+function drawEyeInfo(w, H, u, pop) {
+  const main = faces[0];
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,.9)'; ctx.shadowBlur = 6;
+  ctx.font = `500 ${u * 1.5}px ui-monospace, "PingFang SC", sans-serif`;
+  ctx.fillStyle = '#3dffb0';
+  ctx.fillText(`目标 ${faces.length} · ${fps.toFixed(1)} FPS`, w / 2 + pop, H * 0.2);
+  if (main) {
+    const unsure = main.expr[main.top] < UNSURE;
+    ctx.font = `600 ${u * 1.9}px "PingFang SC", sans-serif`;
+    ctx.fillStyle = unsure ? '#aab5b0' : EMO[main.top].color;
+    ctx.fillText((unsure ? '不确定' : EMO[main.top].zh) + ' · ' + $('overall').textContent, w / 2 + pop, H * 0.8);
+  }
+  if (performance.now() - stereoSince < 4000) {
+    ctx.font = `500 ${u * 1.5}px "PingFang SC", sans-serif`; ctx.fillStyle = '#fff';
+    ctx.fillText('点一下屏幕退出双眼模式', w / 2 + pop, H * 0.5);
+  }
+  ctx.shadowBlur = 0;
+}
+
+function drawMarkers(W, H, u, map) {
   // 人脸标记：四种样式可切换
   const style = STYLES[styleIdx][0], fs = Math.max(14, u * 1.7);
   faces.forEach((f, i) => {
-    const b = f.box, e = f.expr, top = f.top, unsure = e[top] < UNSURE, col = unsure ? '#aab5b0' : EMO[top].color;
-    for (const k of ['x', 'y', 'width', 'height']) b[k] += (f.target[k] - b[k]) * 0.15;  // 每帧缓动到目标位置
-    // 百分比只在变化超过 4 个点时才刷新，数字不再狂跳
-    const rawPct = Math.round(e[top] * 100);
-    if (f.shownPct == null || Math.abs(rawPct - f.shownPct) >= 4) f.shownPct = rawPct;
+    const b = map(f), e = f.expr, top = f.top, unsure = e[top] < UNSURE, col = unsure ? '#aab5b0' : EMO[top].color;
     const cx = b.x + b.width / 2, pct = f.shownPct, main = i === 0;
-    const label = unsure ? '不确定' : `${EMO[top].zh} ${pct}%`, emo = unsure ? '❔' : EMOJI[top];
+    const far = f.dist && f.dist < 10 ? ` · ${f.dist.toFixed(1)}米` : '';
+    const label = (unsure ? '不确定' : `${EMO[top].zh} ${pct}%`) + far, emo = unsure ? '❔' : EMOJI[top];
     ctx.font = `600 ${fs}px "PingFang SC", ui-monospace, sans-serif`;
     ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
     ctx.strokeStyle = col; ctx.lineWidth = Math.max(2, u * (main ? .28 : .16));
@@ -396,8 +451,23 @@ async function startCam() {
   stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
   video.srcObject = stream; await video.play();
-  cv.width = video.videoWidth || 1280; cv.height = video.videoHeight || 720;
+  sizeCanvas();
 }
+function sizeCanvas() {
+  if (stereo) { const d = Math.min(devicePixelRatio || 1, 2); cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d); }
+  else { cv.width = video.videoWidth || 1280; cv.height = video.videoHeight || 720; }
+}
+function setStereo(on) {
+  stereo = on; stereoSince = performance.now();
+  $('stage').classList.toggle('stereo', on);
+  sizeCanvas();
+  if (on) {   // 尽量全屏并锁定横屏，失败也不影响使用
+    try { document.documentElement.requestFullscreen && document.documentElement.requestFullscreen().then(() => screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape').catch(() => {})).catch(() => {}); } catch (e) {}
+  } else {
+    try { document.fullscreenElement && document.exitFullscreen(); } catch (e) {}
+  }
+}
+addEventListener('resize', () => { if (stereo) sizeCanvas(); });
 
 $('startBtn').onclick = async () => {
   try {
@@ -429,6 +499,8 @@ $('styleBtn').onclick = () => {
   styleIdx = (styleIdx + 1) % STYLES.length; syncStyle();
   try { localStorage.setItem('hudStyle', STYLES[styleIdx][0]); } catch (e) {}
 };
+$('stereoBtn').onclick = () => setStereo(true);
+cv.addEventListener('click', () => { if (stereo) setStereo(false); });
 $('modeBtn').onclick = () => { hudOnly = !hudOnly; $('modeBtn').textContent = '镜片模式：' + (hudOnly ? '开' : '关'); };
 $('flipBtn').onclick = async () => {
   facing = facing === 'environment' ? 'user' : 'environment';
