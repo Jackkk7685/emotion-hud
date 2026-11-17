@@ -375,9 +375,13 @@ let objDetector = null, objOn = true, objs = [], objHits = [], lastObjTs = 0, la
 async function loadObjectDetector() {
   const mp = await import(`${MP_BASE}/vision_bundle.mjs`);
   const fileset = await mp.FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
-  const make = delegate => mp.ObjectDetector.createFromOptions(fileset, {
-    baseOptions: { modelAssetPath: 'models/efficientdet_lite0.tflite', delegate }, runningMode: 'VIDEO', scoreThreshold: 0.4, maxResults: 8 });
-  try { objDetector = await make('GPU'); } catch (e) { objDetector = await make('CPU'); }
+  const make = (model, delegate) => mp.ObjectDetector.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: `models/${model}.tflite`, delegate }, runningMode: 'VIDEO', scoreThreshold: 0.35, maxResults: 10 });
+  // 优先用更大更准的 Lite2 模型；加载不了再退回小的 Lite0
+  for (const [model, delegate] of [['efficientdet_lite2', 'GPU'], ['efficientdet_lite2', 'CPU'], ['efficientdet_lite0', 'GPU'], ['efficientdet_lite0', 'CPU']]) {
+    try { objDetector = await make(model, delegate); window.__objModel = model + ' ' + delegate; break; } catch (e) { console.warn('detector', model, delegate, e); }
+  }
+  if (!objDetector) throw new Error('no object detector');
 }
 function detectObjects(src) {
   if (!objDetector || !objOn) { objs = []; return; }
@@ -391,15 +395,19 @@ function detectObjects(src) {
     const c = [d.box.x + d.box.width / 2, d.box.y + d.box.height / 2];
     const o = objs.find(o => !used.has(o) && o.name === d.name &&
       Math.hypot(c[0] - o.target.x - o.target.width / 2, c[1] - o.target.y - o.target.height / 2) < Math.max(o.target.width, d.box.width) * 0.6);
-    if (o) { used.add(o); o.target = d.box; o.score = o.score * 0.6 + d.score * 0.4; o.miss = 0; }
-    else { const n = { name: d.name, score: d.score, box: { ...d.box }, target: d.box, miss: 0 }; objs.push(n); used.add(n); }
+    if (o) { used.add(o); o.target = d.box; o.score = o.score * 0.6 + d.score * 0.4; o.miss = 0; o.hits++; }
+    else { const n = { name: d.name, score: d.score, box: { ...d.box }, target: d.box, miss: 0, hits: 1 }; objs.push(n); used.add(n); }
   }
   objs = objs.filter(o => used.has(o) || ++o.miss <= 3);
 }
+// 只显示“连续看到两次以上、且把握超过一半”的物体，一闪而过的误判不显示
+const OBJ_MIN = 0.5;
+const objVisible = o => o.hits >= 2 && o.score >= OBJ_MIN;
 // 物体标记：四角细线 + 小号磨砂标签。点标签会打开网页搜索
 function drawObjects(W, H, u, map, hits) {
   const fs = Math.max(12, u * 1.35);
   for (const o of objs) {
+    if (!objVisible(o)) continue;
     const b = map(o), zh = OBJ_ZH[o.name];
     ctx.strokeStyle = 'rgba(255,255,255,.75)'; ctx.lineWidth = Math.max(1.5, u * .14); ctx.lineCap = 'round';
     const L = Math.min(b.width, b.height) * .16;
@@ -408,7 +416,7 @@ function drawObjects(W, H, u, map, hits) {
       ctx.moveTo(x + dx * L, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * L);
     }
     ctx.stroke();
-    const text = `${zh} ⌕`;
+    const text = `${zh} ${Math.round(o.score * 100)}% ⌕`;
     ctx.font = `500 ${fs}px -apple-system, "PingFang SC", sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     const pw = ctx.measureText(text).width + fs * 1.3, ph = fs * 1.9;
     const px = Math.max(visX0 + 6, Math.min(b.x + b.width / 2 - pw / 2, visX1 - pw - 6)), py = Math.max(4, Math.min(b.y + fs * .5, H - ph - 4));
