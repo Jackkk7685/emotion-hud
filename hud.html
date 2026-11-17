@@ -12,7 +12,7 @@
     -webkit-font-smoothing: antialiased; }
   #stage { position: fixed; inset: 0; }
   #cv { width: 100%; height: 100%; object-fit: cover; display: block; }
-  #stage.stereo .hud, #stage.stereo .panel, #stage.stereo #train, #stage.stereo #geo, #stage.stereo #more { display: none !important; }
+  #stage.stereo .hud, #stage.stereo .panel, #stage.stereo #train, #stage.stereo #geo, #stage.stereo #more, #stage.stereo #ai, #stage.stereo #aiKey { display: none !important; }
   /* 默认只留最少的东西；状态栏、趋势条这些放进「详细信息」里 */
   #stage:not(.detail) .hud.top, #stage:not(.detail) .trend { display: none; }
   #stage:not(.detail) .panel, #stage:not(.detail) #geo { top: calc(env(safe-area-inset-top, 0px) + 14px); }
@@ -21,7 +21,7 @@
   #more button { text-align: left; border-radius: 16px; padding: 11px 14px; }
 
   /* 磨砂玻璃材质：半透明 + 背景模糊 + 细亮边 */
-  .tag, .panel, .ctrl, #train, .card, #geo, #more {
+  .tag, .panel, .ctrl, #train, .card, #geo, #more, #ai, #aiKey {
     background: var(--glass); border: 1px solid var(--line);
     -webkit-backdrop-filter: blur(28px) saturate(1.7); backdrop-filter: blur(28px) saturate(1.7);
     box-shadow: 0 10px 36px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.18); }
@@ -70,6 +70,21 @@
   .place b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .place span { color: var(--dim); font-size: 12.5px; font-variant-numeric: tabular-nums; }
   .place i { display: inline-block; font-style: normal; text-align: center; transition: transform .2s ease; }
+  #ai, #aiKey { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
+    width: min(420px, 92vw); border-radius: 26px; padding: 16px 18px; display: none; z-index: 3; max-height: 56vh; overflow: auto; }
+  #ai h3, #aiKey h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  #ai h3 button, #aiKey h3 button { padding: 2px 10px; font-size: 18px; line-height: 1.2; }
+  #aiSum { margin: 0 0 8px; }
+  .ait { padding: 8px 8px; border-radius: 14px; cursor: pointer; }
+  .ait:hover { background: rgba(255,255,255,.12); }
+  .ait b { font-weight: 600; }
+  .ait em { font-style: normal; font-size: 12px; margin-left: 8px; padding: 1px 8px; border-radius: 99px; background: rgba(255,255,255,.16); color: var(--dim); }
+  .ait div { color: var(--dim); font-size: 13px; margin-top: 2px; }
+  #aiKey p { color: var(--dim); font-size: 13px; margin: 6px 0; }
+  #aiKey input { width: 100%; font: inherit; color: #fff; background: rgba(255,255,255,.12); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 6px 0; }
+  #aiKey .row { display: flex; gap: 8px; margin-top: 8px; }
+  #aiKey .row button { background: rgba(255,255,255,.16); }
+  #aiKey .row button.go { background: #fff; color: #111; font-weight: 600; }
   #boot { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
     background: radial-gradient(120% 90% at 50% 0%, #3a3d46 0%, #17181c 55%, #0a0a0c 100%); }
   .card { border-radius: 34px; padding: 34px 30px 26px; max-width: 440px; }
@@ -115,6 +130,7 @@
     <div class="ctrl">
       <button id="objBtn">物体识别：开</button>
       <button id="geoBtn">地标地图：关</button>
+      <button id="aiBtn">AI 识别</button>
       <button id="flipBtn">翻转摄像头</button>
       <button id="moreBtn">更多</button>
     </div>
@@ -126,6 +142,7 @@
     <button id="stereoBtn">双眼模式</button>
     <button id="modeBtn">镜片模式：关</button>
     <button id="detailBtn">详细信息：关</button>
+    <button id="aiKeyBtn">AI 密钥设置</button>
     <button id="stopBtn">停止</button>
   </div>
 
@@ -133,6 +150,21 @@
     <div id="map"></div>
     <div id="geoMsg">正在获取位置…</div>
     <div id="places"></div>
+  </div>
+
+  <div id="ai">
+    <h3><span>AI 识别</span><button id="aiClose" aria-label="关闭">×</button></h3>
+    <p id="aiSum"></p>
+    <div id="aiItems"></div>
+  </div>
+
+  <div id="aiKey">
+    <h3><span>AI 密钥设置</span><button id="aiKeyClose" aria-label="关闭">×</button></h3>
+    <p>「AI 识别」会把<b>当前这一帧画面</b>发给 Anthropic 的 Claude 模型，由它说出画面里具体是什么。需要你自己的 API 密钥，按次计费。</p>
+    <p>密钥只保存在这台设备的这个浏览器里，不会发到别处。请使用设了消费上限的密钥，并且不要在别人的设备上填写。</p>
+    <input id="aiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="在这里粘贴你的 API 密钥">
+    <div class="row"><button class="go" id="aiKeySave">保存</button><button id="aiKeyClear">清除已保存的密钥</button></div>
+    <p><a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">去 Claude 开发者平台创建密钥 →</a></p>
   </div>
 
   <div id="train">
@@ -147,7 +179,7 @@
     <div class="card">
       <h1>情绪 HUD</h1>
       <p>智能眼镜情绪 HUD 的手机原型：把摄像头当作眼镜的摄像头，屏幕当作镜片显示。</p>
-      <p>所有识别都在本机完成，画面不会上传。点物体标签会打开网页搜索，只发送物体名称；开启「地标地图」后会把你的位置发给地图和百科服务来查询附近地标。请只对同意被识别的人使用。</p>
+      <p>所有识别都在本机完成，画面不会上传。点物体标签会打开网页搜索，只发送物体名称；开启「地标地图」后会把你的位置发给地图和百科服务来查询附近地标；点「AI 识别」会把当前一帧画面发给 Claude 模型。请只对同意被识别的人使用。</p>
       <button id="startBtn" disabled>启动 HUD</button>
       <p id="status">正在加载模型…</p>
       <p><a href="index.html">← 返回普通版</a></p>
@@ -876,6 +908,102 @@ cv.addEventListener('click', ev => {
   const hit = objHits.find(h => x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h);
   if (hit) window.open(hit.url || 'https://www.bing.com/search?q=' + encodeURIComponent(hit.q), '_blank', 'noopener');
 });
+// ---- AI 详细识别：把当前一帧画面交给 Claude 视觉模型，认出具体是什么 ----
+const AI_MODEL = 'claude-opus-5-5';
+const AI_SYSTEM = `你是一副 AR 眼镜里的识别引擎。用户会给你摄像头拍到的一帧画面，请指出画面里值得注意的物体、建筑或地标、以及能看清的文字。
+要求：
+- 尽量具体：看得清品牌、型号、品种、建筑名称时就直接说出来；看不清就只说大类，不要编造。
+- 每一项用 confidence 标明把握：high（很确定）、medium（比较像）、low（猜测）。
+- 画面里有人时，只描述穿着、动作这类看得见的内容，绝对不要猜测或说出这个人是谁。
+- 如果给了拍摄位置和朝向，可以用它来判断眼前的建筑或地标，但要和画面内容相符才采用。
+- 全部用简体中文，简短。summary 一句话概括画面；items 最多 6 项，按重要程度排序；search_query 是适合直接拿去网页搜索的关键词。`;
+const AI_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['summary', 'items'],
+  properties: {
+    summary: { type: 'string' },
+    items: { type: 'array', items: {
+      type: 'object', additionalProperties: false, required: ['name', 'detail', 'confidence', 'search_query'],
+      properties: { name: { type: 'string' }, detail: { type: 'string' }, confidence: { type: 'string', enum: ['high', 'medium', 'low'] }, search_query: { type: 'string' } } } },
+  },
+};
+const CONF_ZH = { high: '很确定', medium: '比较像', low: '猜测' };
+let aiSdk = null, aiBusy = false;
+const aiKeyGet = () => { try { return localStorage.getItem('hudAiKey') || ''; } catch (e) { return ''; } };
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function showAi(sum, items) {
+  $('ai').style.display = 'block'; $('aiKey').style.display = 'none'; $('more').style.display = 'none';
+  $('aiSum').textContent = sum;
+  $('aiItems').innerHTML = (items || []).map(x =>
+    `<div class="ait" data-q="${esc(x.search_query || x.name)}"><b>${esc(x.name)}</b><em>${CONF_ZH[x.confidence] || ''}</em><div>${esc(x.detail)}</div></div>`).join('');
+}
+function grabFrame() {      // 把当前画面缩到长边不超过 1024 像素再发送，够看清又省流量和费用
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw) return null;
+  const k = Math.min(1, 1024 / Math.max(vw, vh)), c = document.createElement('canvas');
+  c.width = Math.round(vw * k); c.height = Math.round(vh * k);
+  c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.82).split(',')[1];
+}
+async function aiRecognize() {
+  if (aiBusy) return;
+  const key = aiKeyGet();
+  if (!key) { $('aiKey').style.display = 'block'; $('ai').style.display = 'none'; $('more').style.display = 'none'; return; }
+  const data = grabFrame();
+  if (!data) { flash('摄像头画面还没准备好'); return; }
+  aiBusy = true; $('aiBtn').textContent = '识别中…';
+  showAi('正在把这一帧画面交给 AI 识别，通常需要几秒…', []);
+  let Anthropic;
+  try {
+    aiSdk = aiSdk || (await import('https://esm.sh/@anthropic-ai/sdk@1.9.0')).default;
+    Anthropic = aiSdk;
+    // 在网页里直接调用需要显式打开这个开关；密钥是用户自己填的，只存在本机浏览器里
+    const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
+    const where = geoOn && pos ? `拍摄位置约为北纬/南纬 ${pos.lat.toFixed(5)}、经度 ${pos.lon.toFixed(5)}` + (heading != null ? `，镜头朝向约 ${Math.round(heading)}°（0 为正北，顺时针）。` : '。') : '';
+    const response = await client.beta.messages.create({
+      model: AI_MODEL,
+      max_tokens: 16000,
+      system: AI_SYSTEM,
+      // 这是“看一眼就回答”的任务，用低一档的思考强度，回得更快也更省
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: AI_SCHEMA } },
+      // 模型因安全策略拒答时，由服务端自动换用备用模型重试
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } },
+        { type: 'text', text: '这是我现在看到的画面，请识别。' + where },
+      ] }],
+    });
+    if (response.stop_reason === 'refusal') { showAi('模型拒绝了这次识别，换个画面再试。', []); return; }
+    if (response.stop_reason === 'max_tokens') { showAi('回答被截断了，请再试一次。', []); return; }
+    const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
+    const out = JSON.parse(text);
+    showAi(out.summary || '识别完成', out.items);
+  } catch (err) {
+    let msg;
+    if (Anthropic && err instanceof Anthropic.AuthenticationError) msg = '密钥无效，请到「更多 → AI 密钥设置」里重新填写。';
+    else if (Anthropic && err instanceof Anthropic.PermissionDeniedError) msg = '这个密钥没有权限使用该模型。';
+    else if (Anthropic && err instanceof Anthropic.RateLimitError) msg = '请求太频繁或额度用完了，稍后再试。';
+    else if (Anthropic && err instanceof Anthropic.BadRequestError) msg = '请求被拒绝：' + err.message;
+    else if (Anthropic && err instanceof Anthropic.APIConnectionError) msg = '连不上 AI 服务，请检查网络。';
+    else if (Anthropic && err instanceof Anthropic.APIError) msg = `AI 服务出错（${err.status}），稍后再试。`;
+    else if (err instanceof SyntaxError) msg = 'AI 返回的内容无法解析，请再试一次。';
+    else msg = '识别失败：' + (err && err.message ? err.message : '未知错误');
+    showAi(msg, []); console.warn(err);
+  } finally { aiBusy = false; $('aiBtn').textContent = 'AI 识别'; }
+}
+$('aiBtn').onclick = aiRecognize;
+$('aiClose').onclick = () => { $('ai').style.display = 'none'; };
+$('aiItems').onclick = ev => { const el = ev.target.closest('.ait'); if (el) window.open('https://www.bing.com/search?q=' + encodeURIComponent(el.dataset.q), '_blank', 'noopener'); };
+$('aiKeyBtn').onclick = () => { $('aiKey').style.display = 'block'; $('ai').style.display = 'none'; $('aiKeyInput').value = ''; $('aiKeyInput').placeholder = aiKeyGet() ? '已保存一个密钥；粘贴新的可以替换' : '在这里粘贴你的 API 密钥'; };
+$('aiKeyClose').onclick = () => { $('aiKey').style.display = 'none'; };
+$('aiKeySave').onclick = () => {
+  const v = $('aiKeyInput').value.trim();
+  if (!v) { flash('先粘贴密钥'); return; }
+  try { localStorage.setItem('hudAiKey', v); } catch (e) { flash('这个浏览器不允许保存'); return; }
+  $('aiKeyInput').value = ''; $('aiKey').style.display = 'none'; flash('密钥已保存，可以点「AI 识别」了');
+};
+$('aiKeyClear').onclick = () => { try { localStorage.removeItem('hudAiKey'); } catch (e) {} $('aiKeyInput').value = ''; flash('已清除保存的密钥'); };
+
 $('geoBtn').onclick = () => geoOn ? disableGeo() : enableGeo();
 $('moreBtn').onclick = () => { $('more').style.display = $('more').style.display === 'grid' ? 'none' : 'grid'; };
 $('more').addEventListener('click', ev => { if (ev.target.id && ev.target.id !== 'styleBtn' && ev.target.id !== 'modeBtn' && ev.target.id !== 'detailBtn') $('more').style.display = 'none'; });
