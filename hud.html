@@ -94,7 +94,7 @@
       <button id="objBtn">物体识别：开</button>
       <button id="stereoBtn">双眼模式</button>
       <button id="modeBtn">镜片模式：关</button>
-      <button id="flipBtn">切换摄像头</button>
+      <button id="flipBtn">翻转摄像头</button>
       <button id="stopBtn">停止</button>
     </div>
   </div>
@@ -417,14 +417,16 @@ function render(src) {
   objHits = [];
   const W = cv.width, H = cv.height;
   if (!stereo) {
+    const drawSrc = () => { if (mirror) { ctx.save(); ctx.translate(W, 0); ctx.scale(-1, 1); ctx.drawImage(src, 0, 0, W, H); ctx.restore(); } else ctx.drawImage(src, 0, 0, W, H); };
     if (hudOnly || !src) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
-    else ctx.drawImage(src, 0, 0, W, H);
-    bgDraw = hudOnly || !src ? null : () => ctx.drawImage(src, 0, 0, W, H);
+    else drawSrc();
+    bgDraw = hudOnly || !src ? null : drawSrc;
+    const mapN = f => mirror ? { x: W - f.box.x - f.box.width, y: f.box.y, width: f.box.width, height: f.box.height } : f.box;
     // 画布按“铺满”方式显示，两侧可能被裁掉；算出实际可见的横向范围，标签不要跑到屏幕外
     const k = Math.max(cv.clientWidth / W, cv.clientHeight / H) || 1, vis = Math.min(W, cv.clientWidth / k || W);
     visX0 = (W - vis) / 2; visX1 = visX0 + vis;
-    drawObjects(W, H, Math.max(W, H) / 100, o => o.box, objHits);
-    drawMarkers(W, H, Math.max(W, H) / 100, f => f.box);
+    drawObjects(W, H, Math.max(W, H) / 100, mapN, objHits);
+    drawMarkers(W, H, Math.max(W, H) / 100, mapN);
     return;
   }
   // 双眼模式：左右各画一遍。标记在两眼里略微错开，看起来浮在画面前方
@@ -543,12 +545,26 @@ function loop(ts) {
   requestAnimationFrame(loop);
 }
 
-async function startCam() {
+let mirror = false;
+const camId = () => { try { return stream.getVideoTracks()[0].getSettings().deviceId || ''; } catch (e) { return ''; } };
+async function startCam(deviceId) {
   if (stream) stream.getTracks().forEach(t => t.stop());
+  const size = { width: { ideal: 1280 }, height: { ideal: 720 } };
   stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: { ideal: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    video: deviceId ? { deviceId: { exact: deviceId }, ...size } : { facingMode: { ideal: facing }, ...size }, audio: false });
   video.srcObject = stream; await video.play();
+  // 前置摄像头（以及电脑摄像头）画面做镜像，像照镜子一样；后置摄像头不镜像
+  const st = stream.getVideoTracks()[0].getSettings();
+  mirror = st.facingMode ? st.facingMode === 'user' : true;
+  tracks = []; faces = []; objs = [];
   sizeCanvas();
+}
+function flash(msg) {
+  let el = $('toast');
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'tag';
+    el.style.cssText = 'position:absolute;left:50%;top:64px;transform:translateX(-50%);z-index:5'; $('stage').appendChild(el); }
+  el.textContent = msg; el.style.display = '';
+  clearTimeout(flash.t); flash.t = setTimeout(() => el.style.display = 'none', 2600);
 }
 function sizeCanvas() {
   if (stereo) { const d = Math.min(devicePixelRatio || 1, 2); cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d); }
@@ -608,8 +624,18 @@ cv.addEventListener('click', ev => {
 $('objBtn').onclick = () => { objOn = !objOn; if (!objOn) objs = []; $('objBtn').textContent = '物体识别：' + (objOn ? '开' : '关'); };
 $('modeBtn').onclick = () => { hudOnly = !hudOnly; $('modeBtn').textContent = '镜片模式：' + (hudOnly ? '开' : '关'); };
 $('flipBtn').onclick = async () => {
+  const before = camId();
   facing = facing === 'environment' ? 'user' : 'environment';
   try { await startCam(); } catch (err) { console.warn(err); }
+  if (camId() !== before) return;
+  // 按“前置/后置”没切过去：改成在设备的摄像头列表里挨个轮换
+  try {
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    if (cams.length < 2) { flash('这台设备只有一个摄像头'); return; }
+    const next = cams[(cams.findIndex(c => c.deviceId === before) + 1) % cams.length];
+    await startCam(next.deviceId);
+    if (camId() === before) flash('没能切换到另一个摄像头');
+  } catch (err) { flash('切换摄像头失败'); console.warn(err); }
 };
 setInterval(() => $('clock').textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false }), 500);
 
