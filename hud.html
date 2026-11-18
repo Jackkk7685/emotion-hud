@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Lumi 灵眸</title>
+<title>Lumi 鹿米</title>
 <meta name="theme-color" content="#0a0a0c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Lumi">
+<meta name="apple-mobile-web-app-title" content="鹿米">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icons/favicon.png">
@@ -20,16 +20,39 @@
     -webkit-font-smoothing: antialiased; }
   #stage { position: fixed; inset: 0; }
   #cv { width: 100%; height: 100%; object-fit: cover; display: block; }
-  #stage.stereo .hud, #stage.stereo .panel, #stage.stereo #train, #stage.stereo #geo, #stage.stereo #more, #stage.stereo #ai, #stage.stereo #aiKey { display: none !important; }
+  #stage.stereo .hud, #stage.stereo .panel, #stage.stereo #train, #stage.stereo #geo, #stage.stereo #more, #stage.stereo #ai, #stage.stereo #aiKey, #stage.stereo #chat { display: none !important; }
+  #chat { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + var(--barH, 70px));
+    width: min(440px, 94vw); border-radius: 26px; padding: 14px 16px; display: none; z-index: 3; }
+  #chat h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+  #chat h3 button { padding: 2px 10px; font-size: 18px; line-height: 1.2; }
+  #chatLog { max-height: 34vh; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+  .msg { padding: 8px 12px; border-radius: 16px; max-width: 88%; white-space: pre-wrap; }
+  .msg.u { align-self: flex-end; background: rgba(255,255,255,.9); color: #111; }
+  .msg.b { align-self: flex-start; background: rgba(255,255,255,.12); }
+  #chatStatus { color: var(--dim); font-size: 12.5px; margin: 8px 2px 6px; min-height: 1.4em; }
+  #chat .row { display: flex; gap: 6px; align-items: center; }
+  #chatInput { flex: 1; min-width: 0; font: inherit; color: #fff; background: rgba(255,255,255,.12); border: 1px solid var(--line); border-radius: 999px; padding: 9px 14px; }
+  #sendBtn { background: rgba(255,255,255,.16); }
+  .mic { width: 42px; height: 42px; padding: 0; font-size: 18px; background: rgba(255,255,255,.16); flex: none; }
+  .mic.on, .talk.on { background: #fff; color: #111; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(255,255,255,.18); } }
+  #aiKey .lbl { color: var(--ink); font-weight: 600; margin: 10px 0 4px; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; background: rgba(255,255,255,.1); border-radius: 14px; padding: 8px 10px; text-align: left; }
+  .seg button small { display: block; color: var(--dim); font-size: 11.5px; font-weight: 400; }
+  .seg button.sel { background: #fff; color: #111; }
+  .seg button.sel small { color: #555; }
+  .chk { display: flex; gap: 8px; align-items: center; font-size: 13.5px; margin: 8px 2px 0; cursor: pointer; }
+  #aiKey .chk input { width: 18px; height: 18px; margin: 0; padding: 0; flex: none; accent-color: #fff; }
   /* 默认只留最少的东西；状态栏、趋势条这些放进「详细信息」里 */
   #stage:not(.detail) .hud.top, #stage:not(.detail) .trend { display: none; }
   #stage:not(.detail) .panel, #stage:not(.detail) #geo { top: calc(env(safe-area-inset-top, 0px) + 14px); }
-  #more { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + 70px); transform: translateX(-50%);
+  #more { position: absolute; left: 50%; bottom: calc(env(safe-area-inset-bottom, 0px) + var(--barH, 70px)); transform: translateX(-50%);
     display: none; grid-template-columns: 1fr 1fr; gap: 2px; padding: 6px; border-radius: 24px; width: min(320px, 92vw); z-index: 4; }
   #more button { text-align: left; border-radius: 16px; padding: 11px 14px; }
 
   /* 磨砂玻璃材质：半透明 + 背景模糊 + 细亮边 */
-  .tag, .panel, .ctrl, #train, .card, #geo, #more, #ai, #aiKey {
+  .tag, .panel, .ctrl, #train, .card, #geo, #more, #ai, #aiKey, #chat {
     background: var(--glass); border: 1px solid var(--line);
     -webkit-backdrop-filter: blur(28px) saturate(1.7); backdrop-filter: blur(28px) saturate(1.7);
     box-shadow: 0 10px 36px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.18); }
@@ -78,7 +101,7 @@
   .place b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .place span { color: var(--dim); font-size: 12.5px; font-variant-numeric: tabular-nums; }
   .place i { display: inline-block; font-style: normal; text-align: center; transition: transform .2s ease; }
-  #ai, #aiKey { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 70px);
+  #ai, #aiKey { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + var(--barH, 70px));
     width: min(420px, 92vw); border-radius: 26px; padding: 16px 18px; display: none; z-index: 3; max-height: 56vh; overflow: auto; }
   #ai h3, #aiKey h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
   #ai h3 button, #aiKey h3 button { padding: 2px 10px; font-size: 18px; line-height: 1.2; }
@@ -137,6 +160,7 @@
   <div class="hud bottom">
     <div class="trend" id="trend"></div>
     <div class="ctrl">
+      <button id="talkBtn" class="talk">🎙 问鹿米</button>
       <button id="objBtn">物体识别：开</button>
       <button id="geoBtn">地标地图：关</button>
       <button id="aiBtn">AI 识别</button>
@@ -151,7 +175,7 @@
     <button id="stereoBtn">双眼模式</button>
     <button id="modeBtn">镜片模式：关</button>
     <button id="detailBtn">详细信息：关</button>
-    <button id="aiKeyBtn">AI 密钥设置</button>
+    <button id="aiKeyBtn">AI 设置</button>
     <button id="stopBtn">停止</button>
   </div>
 
@@ -167,9 +191,24 @@
     <div id="aiItems"></div>
   </div>
 
+  <div id="chat">
+    <h3><span>鹿米</span><button id="chatClose" aria-label="关闭">×</button></h3>
+    <div id="chatLog"></div>
+    <div id="chatStatus">点 🎙 说话，或者在下面打字</div>
+    <div class="row"><button id="micBtn" class="mic" aria-label="说话">🎙</button><input id="chatInput" type="text" autocomplete="off" placeholder="问鹿米：这是什么？"><button id="sendBtn">发送</button></div>
+  </div>
+
   <div id="aiKey">
-    <h3><span>AI 密钥设置</span><button id="aiKeyClose" aria-label="关闭">×</button></h3>
-    <p>「AI 识别」会把<b>当前这一帧画面</b>发给 Anthropic 的 Claude 模型，由它说出画面里具体是什么。需要你自己的 API 密钥，按次计费。</p>
+    <h3><span>AI 设置</span><button id="aiKeyClose" aria-label="关闭">×</button></h3>
+    <p class="lbl">模型</p>
+    <div class="seg" id="modelSeg">
+      <button data-m="fable">最强<small>Claude Fable 5.2</small></button>
+      <button data-m="opus">更快更省<small>Claude Opus 5.5</small></button>
+    </div>
+    <label class="chk"><input type="checkbox" id="speakChk"> 朗读鹿米的回答</label>
+    <label class="chk"><input type="checkbox" id="autoChk"> 回答完自动继续听</label>
+    <p class="lbl">API 密钥</p>
+    <p>「问鹿米」和「AI 识别」会把<b>当前这一帧画面</b>和你的问题发给 Anthropic 的 Claude 模型。需要你自己的 API 密钥，按次计费。</p>
     <p>密钥只保存在这台设备的这个浏览器里，不会发到别处。请使用设了消费上限的密钥，并且不要在别人的设备上填写。</p>
     <input id="aiKeyInput" type="password" autocomplete="off" spellcheck="false" placeholder="在这里粘贴你的 API 密钥">
     <div class="row"><button class="go" id="aiKeySave">保存</button><button id="aiKeyClear">清除已保存的密钥</button></div>
@@ -187,12 +226,12 @@
   <div id="boot">
     <div class="card">
       <img class="logo" src="icons/icon-192.png" alt="" width="72" height="72">
-      <h1>Lumi <span style="font-weight:500;color:var(--dim)">灵眸</span></h1>
+      <h1>Lumi <span style="font-weight:500;color:var(--dim)">鹿米</span></h1>
       <p>看懂眼前的一切。把手机摄像头当作眼镜的眼睛，屏幕当作镜片：读心情、认物体、找地标，看不懂时问 AI。</p>
-      <p>所有识别都在本机完成，画面不会上传。点物体标签会打开网页搜索，只发送物体名称；开启「地标地图」后会把你的位置发给地图和百科服务来查询附近地标；点「AI 识别」会把当前一帧画面发给 Claude 模型。请只对同意被识别的人使用。</p>
+      <p>心情、物体识别都在本机完成，画面不会上传。点物体标签会打开网页搜索，只发送物体名称；开启「地标地图」后会把你的位置发给地图和百科服务来查询附近地标；「问鹿米」和「AI 识别」会把你的问题和当前一帧画面发给 Claude 模型，说话由浏览器自带的语音识别转成文字。请只对同意被识别的人使用。</p>
       <button id="startBtn" disabled>启动 Lumi</button>
       <p id="status">正在加载模型…</p>
-      <p><a href="index.html">← Lumi 首页</a></p>
+      <p><a href="index.html">← 鹿米首页</a></p>
     </div>
   </div>
 </div>
@@ -919,7 +958,27 @@ cv.addEventListener('click', ev => {
   if (hit) window.open(hit.url || 'https://www.bing.com/search?q=' + encodeURIComponent(hit.q), '_blank', 'noopener');
 });
 // ---- AI 详细识别：把当前一帧画面交给 Claude 视觉模型，认出具体是什么 ----
-const AI_MODEL = 'claude-opus-5-5';
+// 两档模型：Fable 5.2 是目前对所有人开放的最强模型；Opus 5.5 更快、价格约一半
+const MODELS = { fable: 'claude-fable-5-2', opus: 'claude-opus-5-5' };
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const aiModel = () => MODELS[lsGet('hudAiModel', 'fable')] || MODELS.fable;
+async function aiClient(key) {
+  aiSdk = aiSdk || (await import('https://esm.sh/@anthropic-ai/sdk@1.9.0')).default;
+  // 在网页里直接调用需要显式打开这个开关；密钥是用户自己填的，只存在本机浏览器里
+  return new aiSdk({ apiKey: key, dangerouslyAllowBrowser: true });
+}
+function aiErrMsg(err) {
+  const A = aiSdk;
+  if (A && err instanceof A.AuthenticationError) return '密钥无效，请到「更多 → AI 设置」里重新填写。';
+  if (A && err instanceof A.PermissionDeniedError) return '这个密钥没有权限使用该模型，可以在「AI 设置」里换成另一个模型试试。';
+  if (A && err instanceof A.RateLimitError) return '请求太频繁或额度用完了，稍后再试。';
+  if (A && err instanceof A.BadRequestError) return '请求被拒绝：' + err.message;
+  if (A && err instanceof A.APIConnectionError) return '连不上 AI 服务，请检查网络。';
+  if (A && err instanceof A.APIError) return `AI 服务出错（${err.status}），稍后再试。`;
+  if (err instanceof SyntaxError) return 'AI 返回的内容无法解析，请再试一次。';
+  return '出错了：' + (err && err.message ? err.message : '未知错误');
+}
 const AI_SYSTEM = `你是一副 AR 眼镜里的识别引擎。用户会给你摄像头拍到的一帧画面，请指出画面里值得注意的物体、建筑或地标、以及能看清的文字。
 要求：
 - 尽量具体：看得清品牌、型号、品种、建筑名称时就直接说出来；看不清就只说大类，不要编造。
@@ -957,20 +1016,17 @@ function grabFrame() {      // 把当前画面缩到长边不超过 1024 像素�
 async function aiRecognize() {
   if (aiBusy) return;
   const key = aiKeyGet();
-  if (!key) { $('aiKey').style.display = 'block'; $('ai').style.display = 'none'; $('more').style.display = 'none'; return; }
+  if (!key) { openSettings(); return; }
   const data = grabFrame();
   if (!data) { flash('摄像头画面还没准备好'); return; }
+  $('chat').style.display = 'none';
   aiBusy = true; $('aiBtn').textContent = '识别中…';
   showAi('正在把这一帧画面交给 AI 识别，通常需要几秒…', []);
-  let Anthropic;
   try {
-    aiSdk = aiSdk || (await import('https://esm.sh/@anthropic-ai/sdk@1.9.0')).default;
-    Anthropic = aiSdk;
-    // 在网页里直接调用需要显式打开这个开关；密钥是用户自己填的，只存在本机浏览器里
-    const client = new Anthropic({ apiKey: key, dangerouslyAllowBrowser: true });
+    const client = await aiClient(key);
     const where = geoOn && pos ? `拍摄位置约为北纬/南纬 ${pos.lat.toFixed(5)}、经度 ${pos.lon.toFixed(5)}` + (heading != null ? `，镜头朝向约 ${Math.round(heading)}°（0 为正北，顺时针）。` : '。') : '';
     const response = await client.beta.messages.create({
-      model: AI_MODEL,
+      model: aiModel(),
       max_tokens: 16000,
       system: AI_SYSTEM,
       // 这是“看一眼就回答”的任务，用低一档的思考强度，回得更快也更省
@@ -989,30 +1045,176 @@ async function aiRecognize() {
     const out = JSON.parse(text);
     showAi(out.summary || '识别完成', out.items);
   } catch (err) {
-    let msg;
-    if (Anthropic && err instanceof Anthropic.AuthenticationError) msg = '密钥无效，请到「更多 → AI 密钥设置」里重新填写。';
-    else if (Anthropic && err instanceof Anthropic.PermissionDeniedError) msg = '这个密钥没有权限使用该模型。';
-    else if (Anthropic && err instanceof Anthropic.RateLimitError) msg = '请求太频繁或额度用完了，稍后再试。';
-    else if (Anthropic && err instanceof Anthropic.BadRequestError) msg = '请求被拒绝：' + err.message;
-    else if (Anthropic && err instanceof Anthropic.APIConnectionError) msg = '连不上 AI 服务，请检查网络。';
-    else if (Anthropic && err instanceof Anthropic.APIError) msg = `AI 服务出错（${err.status}），稍后再试。`;
-    else if (err instanceof SyntaxError) msg = 'AI 返回的内容无法解析，请再试一次。';
-    else msg = '识别失败：' + (err && err.message ? err.message : '未知错误');
-    showAi(msg, []); console.warn(err);
+    showAi(aiErrMsg(err), []); console.warn(err);
   } finally { aiBusy = false; $('aiBtn').textContent = 'AI 识别'; }
 }
 $('aiBtn').onclick = aiRecognize;
 $('aiClose').onclick = () => { $('ai').style.display = 'none'; };
 $('aiItems').onclick = ev => { const el = ev.target.closest('.ait'); if (el) window.open('https://www.bing.com/search?q=' + encodeURIComponent(el.dataset.q), '_blank', 'noopener'); };
-$('aiKeyBtn').onclick = () => { $('aiKey').style.display = 'block'; $('ai').style.display = 'none'; $('aiKeyInput').value = ''; $('aiKeyInput').placeholder = aiKeyGet() ? '已保存一个密钥；粘贴新的可以替换' : '在这里粘贴你的 API 密钥'; };
+function openSettings() {
+  $('aiKey').style.display = 'block'; $('ai').style.display = 'none'; $('chat').style.display = 'none'; $('more').style.display = 'none';
+  $('aiKeyInput').value = ''; $('aiKeyInput').placeholder = aiKeyGet() ? '已保存一个密钥；粘贴新的可以替换' : '在这里粘贴你的 API 密钥';
+  const m = lsGet('hudAiModel', 'fable');
+  document.querySelectorAll('#modelSeg button').forEach(b => b.classList.toggle('sel', b.dataset.m === m));
+  $('speakChk').checked = lsGet('hudSpeak', '1') === '1'; $('autoChk').checked = lsGet('hudAuto', '0') === '1';
+}
+$('aiKeyBtn').onclick = openSettings;
+$('modelSeg').onclick = ev => { const b = ev.target.closest('button'); if (!b) return; lsSet('hudAiModel', b.dataset.m); openSettings(); };
+$('speakChk').onchange = () => { lsSet('hudSpeak', $('speakChk').checked ? '1' : '0'); if (!$('speakChk').checked) stopSpeak(); };
+$('autoChk').onchange = () => lsSet('hudAuto', $('autoChk').checked ? '1' : '0');
 $('aiKeyClose').onclick = () => { $('aiKey').style.display = 'none'; };
 $('aiKeySave').onclick = () => {
   const v = $('aiKeyInput').value.trim();
   if (!v) { flash('先粘贴密钥'); return; }
   try { localStorage.setItem('hudAiKey', v); } catch (e) { flash('这个浏览器不允许保存'); return; }
-  $('aiKeyInput').value = ''; $('aiKey').style.display = 'none'; flash('密钥已保存，可以点「AI 识别」了');
+  $('aiKeyInput').value = ''; $('aiKey').style.display = 'none'; flash('密钥已保存，可以「问鹿米」或点「AI 识别」了');
 };
 $('aiKeyClear').onclick = () => { try { localStorage.removeItem('hudAiKey'); } catch (e) {} $('aiKeyInput').value = ''; flash('已清除保存的密钥'); };
+
+// ---- 语音对话：听你说话 → 连同眼前这一帧画面问 Claude → 一边生成一边读出来 ----
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const CHAT_SYSTEM = `你是「鹿米」，一副智能眼镜里的语音助手。用户戴着眼镜用说话向你提问。每次提问都会附上眼镜摄像头此刻拍到的画面，以及眼镜在本机识别到的一些信息。
+回答要求：
+- 你的回答会被直接朗读出来。用口语化的简体中文，一般一到三句话，先说结论。不要用列表、标题、表情符号或任何 Markdown 符号。
+- 问题和眼前的东西有关时，根据画面回答；看不清就直说，不要编造。和画面无关的问题照常回答。
+- 画面里有人时，只描述看得见的内容（表情、穿着、动作），绝对不要猜测或说出这个人是谁。
+- 本机识别到的物体和情绪只是参考，可能不准，以画面为准。
+- 给了位置、朝向和附近地标时，可以用来判断眼前是哪栋建筑或哪个地方，但要和画面相符。
+- 用户问的是之前聊过的内容时，参考附带的“之前的对话”。`;
+let speechRec = null, listening = false, chatBusy = false, chatMem = [], speakGen = 0, speakQ = 0, ttsUnlocked = false;
+const speakOn = () => lsGet('hudSpeak', '1') === '1';
+const autoOn = () => lsGet('hudAuto', '0') === '1';
+const setStatus = t => { $('chatStatus').textContent = t; };
+function setMic(on) { $('micBtn').classList.toggle('on', on); $('talkBtn').classList.toggle('on', on); }
+function openChat() {
+  $('chat').style.display = 'block'; $('ai').style.display = 'none'; $('aiKey').style.display = 'none'; $('more').style.display = 'none';
+}
+function addMsg(who, text) {
+  const d = document.createElement('div'); d.className = 'msg ' + who; d.textContent = text;
+  $('chatLog').appendChild(d); $('chatLog').scrollTop = 1e9; return d;
+}
+function zhVoice() {
+  const vs = speechSynthesis.getVoices();
+  return vs.find(v => /zh[-_]CN/i.test(v.lang) && /Ting|Yu|Xiao|Li/i.test(v.name)) || vs.find(v => /zh[-_]CN/i.test(v.lang)) || vs.find(v => /^zh/i.test(v.lang)) || null;
+}
+function say(text) {
+  if (!('speechSynthesis' in window) || !speakOn() || !text.trim()) return;
+  const u = new SpeechSynthesisUtterance(text), gen = speakGen, v = zhVoice();
+  u.lang = 'zh-CN'; if (v) u.voice = v; u.rate = 1.05;
+  speakQ++;
+  u.onend = u.onerror = () => { if (gen !== speakGen) return; if (--speakQ <= 0) { speakQ = 0; afterAnswer(); } };
+  speechSynthesis.speak(u);
+}
+function stopSpeak() { speakGen++; speakQ = 0; if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+// 按句子切开朗读：模型还在写后面的内容时，前面的句子已经开始读了
+function speakChunks(text, from, final) {
+  const re = /[。！？!?；;\n]/g; let last = from, m; re.lastIndex = from;
+  while ((m = re.exec(text))) { say(text.slice(last, m.index + 1)); last = m.index + 1; }
+  if (final && last < text.length) { say(text.slice(last)); last = text.length; }
+  return last;
+}
+function afterAnswer() {
+  if (autoOn() && $('chat').style.display === 'block' && !chatBusy && !listening) setTimeout(() => listen(true), 350);
+}
+function sceneContext() {
+  const p = [];
+  const seen = [...new Set(objs.filter(o => o.hits >= 2).map(o => OBJ_ZH[o.name] || o.name))];
+  if (seen.length) p.push('本机检测到的物体：' + seen.join('、'));
+  if (tracks.length) p.push(`画面里有 ${tracks.length} 张人脸` + (mainId != null && shownTop && EMO[shownTop] ? `，最主要那位的表情估计是「${EMO[shownTop].zh}」` : ''));
+  if (geoOn && pos) p.push(`位置约为纬度 ${pos.lat.toFixed(5)}、经度 ${pos.lon.toFixed(5)}` + (heading != null ? `，镜头朝向约 ${Math.round(heading)}°（0 为正北，顺时针）` : ''));
+  if (geoOn && places.length) p.push('附近地标：' + places.slice(0, 6).map(x => x.name).join('、'));
+  if (mirror) p.push('现在用的是前置摄像头，画面里的人很可能就是用户自己');
+  return p.length ? p.join('；') + '。' : '无。';
+}
+function listen(auto) {
+  if (!SR) { setStatus('这个浏览器不支持语音识别，可以直接打字；iPhone 请用 Safari，电脑请用 Chrome'); $('chatInput').focus(); return; }
+  if (listening) { speechRec && speechRec.stop(); return; }
+  if (chatBusy) return;
+  stopSpeak();
+  let finalText = '';
+  speechRec = new SR(); speechRec.lang = 'zh-CN'; speechRec.interimResults = true; speechRec.continuous = false; speechRec.maxAlternatives = 1;
+  speechRec.onresult = e => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) { const r = e.results[i]; if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript; }
+    setStatus('在听：' + finalText + interim);
+  };
+  speechRec.onerror = e => {
+    const m = { 'not-allowed': '麦克风权限被拒绝了，请在浏览器设置里允许使用麦克风', 'service-not-allowed': '这个浏览器不让网页用语音识别，可以直接打字',
+      'no-speech': '没听到声音，再点一下 🎙 试试', network: '语音识别需要联网', 'audio-capture': '没有找到麦克风' }[e.error];
+    if (m && !(auto && e.error === 'no-speech')) setStatus(m);
+  };
+  speechRec.onend = () => {
+    listening = false; setMic(false);
+    if (finalText.trim()) ask(finalText);
+    else if ($('chatStatus').textContent.startsWith('在听')) setStatus('点 🎙 说话，或者在下面打字');
+  };
+  try { speechRec.start(); listening = true; setMic(true); setStatus('在听…'); }
+  catch (e) { setStatus('无法开始录音：' + e.message); }
+}
+async function ask(q) {
+  q = (q || '').trim();
+  if (!q || chatBusy) return;
+  const key = aiKeyGet();
+  if (!key) { openSettings(); flash('先填好 API 密钥'); return; }
+  openChat(); stopSpeak();
+  addMsg('u', q); const bubble = addMsg('b', '…');
+  chatBusy = true; setStatus('鹿米在看、在想…');
+  const data = grabFrame();
+  const mem = chatMem.length ? '之前的对话：\n' + chatMem.map(m => (m.me ? '我：' : '鹿米：') + m.t).join('\n') + '\n\n' : '';
+  const content = [];
+  if (data) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data } });
+  content.push({ type: 'text', text: `${mem}眼镜此刻的信息：${sceneContext()}${data ? '' : '（摄像头画面暂时不可用）'}\n\n我的问题：${q}` });
+  let text = '', spokenTo = 0, ok = false;
+  try {
+    const client = await aiClient(key);
+    // 每次都是独立的一问一答，之前的对话以文字带上：只发一张图，也不用回传模型的思考内容
+    const stream = client.beta.messages.stream({
+      model: aiModel(), max_tokens: 8000, system: CHAT_SYSTEM,
+      output_config: { effort: 'low' },          // 语音对话要快，用低一档的思考强度
+      betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default',
+      messages: [{ role: 'user', content }],
+    });
+    for await (const ev of stream) {
+      if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta') {
+        if (!text) setStatus('');
+        text += ev.delta.text; bubble.textContent = text; $('chatLog').scrollTop = 1e9;
+        spokenTo = speakChunks(text, spokenTo, false);
+      }
+    }
+    const fin = await stream.finalMessage();
+    if (fin.stop_reason === 'refusal') { stopSpeak(); text = '这个问题我没法回答，换个问法试试。'; bubble.textContent = text; say(text); }
+    else {
+      if (!text.trim()) { text = '我没想好怎么回答，再问一次吧。'; bubble.textContent = text; }
+      speakChunks(text, spokenTo, true);
+      if (fin.stop_reason === 'max_tokens') bubble.textContent += '……';
+    }
+    chatMem.push({ me: 1, t: q }, { me: 0, t: text }); while (chatMem.length > 12) chatMem.shift();
+    ok = true; setStatus('点 🎙 继续问');
+  } catch (err) {
+    stopSpeak(); bubble.textContent = aiErrMsg(err); setStatus(''); console.warn(err);
+  } finally {
+    chatBusy = false;
+    if (ok && (!speakOn() || speakQ === 0)) afterAnswer();
+  }
+}
+function unlockTts() {     // iPhone 要求第一次朗读发生在点击里，先读一个空句子解锁
+  if (ttsUnlocked || !('speechSynthesis' in window)) return;
+  ttsUnlocked = true; speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+}
+if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => {};
+// 工具栏在窄屏上会折成两行；弹出的卡片始终放在工具栏上方
+function placeAboveBar() { const c = document.querySelector('.ctrl'); if (c) document.documentElement.style.setProperty('--barH', (c.offsetHeight + 26) + 'px'); }
+addEventListener('resize', placeAboveBar); placeAboveBar();
+$('talkBtn').onclick = () => {
+  unlockTts();
+  if (!aiKeyGet()) { openSettings(); flash('先填好 API 密钥'); return; }
+  if ($('chat').style.display !== 'block') { openChat(); listen(); }
+  else listen();
+};
+$('micBtn').onclick = () => { unlockTts(); listen(); };
+$('sendBtn').onclick = () => { unlockTts(); const v = $('chatInput').value; $('chatInput').value = ''; ask(v); };
+$('chatInput').onkeydown = ev => { if (ev.key === 'Enter' && !ev.isComposing) { ev.preventDefault(); $('sendBtn').click(); } };
+$('chatClose').onclick = () => { $('chat').style.display = 'none'; stopSpeak(); if (listening && speechRec) speechRec.abort(); };
 
 $('geoBtn').onclick = () => geoOn ? disableGeo() : enableGeo();
 $('moreBtn').onclick = () => { $('more').style.display = $('more').style.display === 'grid' ? 'none' : 'grid'; };
