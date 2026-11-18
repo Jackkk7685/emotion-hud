@@ -3,7 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>情绪 HUD 原型</title>
+<title>Lumi 灵眸</title>
+<meta name="theme-color" content="#0a0a0c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lumi">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/favicon.png">
 <style>
   :root { --ink: #fff; --dim: rgba(255,255,255,.62); --line: rgba(255,255,255,.22); --glass: rgba(118,118,128,.30); }
   * { box-sizing: border-box; }
@@ -88,6 +96,7 @@
   #boot { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
     background: radial-gradient(120% 90% at 50% 0%, #3a3d46 0%, #17181c 55%, #0a0a0c 100%); }
   .card { border-radius: 34px; padding: 34px 30px 26px; max-width: 440px; }
+  #boot .logo { border-radius: 18px; display: block; margin: 0 auto 14px; box-shadow: 0 8px 30px rgba(120,110,255,.35); }
   #boot h1 { font-size: 30px; font-weight: 700; margin: 0 0 10px; letter-spacing: .01em; }
   #boot p { color: var(--dim); margin: 6px auto; }
   #startBtn { font-size: 16px; font-weight: 600; padding: 12px 34px; margin: 18px 0 8px; background: #fff; color: #111; }
@@ -113,7 +122,7 @@
   <video id="video" playsinline muted style="display:none"></video>
 
   <div class="hud top">
-    <div><span class="tag">情绪 HUD</span> <span class="tag" id="clock">--:--:--</span></div>
+    <div><span class="tag">Lumi</span> <span class="tag" id="clock">--:--:--</span></div>
     <div><span class="tag"><span class="rec">●</span> <span id="fps">0.0</span> FPS</span> <span class="tag">目标 <span id="count">0</span></span> <span class="tag" id="pTag">个性化 关</span></div>
   </div>
 
@@ -177,12 +186,13 @@
 
   <div id="boot">
     <div class="card">
-      <h1>情绪 HUD</h1>
-      <p>智能眼镜情绪 HUD 的手机原型：把摄像头当作眼镜的摄像头，屏幕当作镜片显示。</p>
+      <img class="logo" src="icons/icon-192.png" alt="" width="72" height="72">
+      <h1>Lumi <span style="font-weight:500;color:var(--dim)">灵眸</span></h1>
+      <p>看懂眼前的一切。把手机摄像头当作眼镜的眼睛，屏幕当作镜片：读心情、认物体、找地标，看不懂时问 AI。</p>
       <p>所有识别都在本机完成，画面不会上传。点物体标签会打开网页搜索，只发送物体名称；开启「地标地图」后会把你的位置发给地图和百科服务来查询附近地标；点「AI 识别」会把当前一帧画面发给 Claude 模型。请只对同意被识别的人使用。</p>
-      <button id="startBtn" disabled>启动 HUD</button>
+      <button id="startBtn" disabled>启动 Lumi</button>
       <p id="status">正在加载模型…</p>
-      <p><a href="index.html">← 返回普通版</a></p>
+      <p><a href="index.html">← Lumi 首页</a></p>
     </div>
   </div>
 </div>
